@@ -116,19 +116,13 @@ All attachment names are generated according to MD5, therefore they are pretty u
 This means you can place an attachment file anywhere within your vault, replace the absolute path in a tag with the file name and Obsidian will still show it in your note.
  
 
-
-
-## Donations
-
-Share your  wishes and ideas about this software or buy me a coffee (or hot chocolate)
-
-<a href="https://www.buymeacoffee.com/sergeikorneev" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;"></a>
-
 ## Credits
 
 [niekcandaele's](https://github.com/niekcandaele/obsidian-local-images)
 
 [aleksey-rezvov](https://github.com/aleksey-rezvov/obsidian-local-images)
+
+[Sergei-Korneev](https://github.com/Sergei-Korneev)
 
 
 ## Build from source
