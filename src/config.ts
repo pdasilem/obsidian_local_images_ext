@@ -1,4 +1,4 @@
-export const APP_TITLE = "Local Images Plus  0.16.4";
+export const APP_TITLE = "Local Images Ext  0.16.5";
 
 
 
@@ -59,6 +59,8 @@ export const NOTICE_TIMEOUT = 5 * 1000;
 export const TIMEOUT_LIKE_INFINITY = 24 * 60 * 60 * 1000;
 export const FORBIDDEN_SYMBOLS_FILENAME_PATTERN = /\s+/g;
 
+export type AttachmentNamingStrategy = "md5" | "originalName" | "noteNameCounter";
+
 export interface ISettings {
   processCreated: boolean,
   ignoredExt: string,
@@ -69,6 +71,7 @@ export interface ISettings {
   saveAttE: string,
   realTimeUpdate: boolean;
   filesizeLimit: number,
+  maxMediaFileSizeKb: number,
   tryCount: number,
   realTimeUpdateInterval: number;
   addNameOfFile: boolean;
@@ -76,8 +79,10 @@ export interface ISettings {
   includeps: string;
   includepattern: string;
   mediaRootDir: string;
+  oversizeMediaSubdir: string;
   disAddCom: boolean;
   useMD5ForNewAtt: boolean;
+  newAttachmentNaming: AttachmentNamingStrategy;
   removeMediaFolder: boolean;
   removeOrphansCompl: boolean;
   PngToJpeg: boolean;
@@ -100,6 +105,7 @@ export const DEFAULT_SETTINGS: ISettings = {
   saveAttE: "obsFolder",
   realTimeUpdate: true,
   filesizeLimit: 0,
+  maxMediaFileSizeKb: 0,
   tryCount: 2,
   realTimeUpdateInterval: 5,
   addNameOfFile: true,
@@ -107,8 +113,10 @@ export const DEFAULT_SETTINGS: ISettings = {
   includeps: "md|canvas",
   includepattern: "(?<md>.*\\.md)|(?<canvas>.*\\.canvas)",
   mediaRootDir: "_resources/${notename}",
+  oversizeMediaSubdir: "_oversized",
   disAddCom: false,
   useMD5ForNewAtt: true,
+  newAttachmentNaming: "md5",
   removeMediaFolder: true,
   removeOrphansCompl: false,
   PngToJpeg: false,

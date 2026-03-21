@@ -1,5 +1,5 @@
 import path, { resolve } from "path";
-import { fromBuffer } from "file-type";
+import { fileTypeFromBuffer } from "file-type";
 import isSvg from "is-svg";
 import md5 from "crypto-js/md5";
 const fs2 = require('fs').promises;
@@ -21,6 +21,8 @@ import {
   Notice,
   TFile
 } from "obsidian";
+
+type BinaryLike = ArrayBuffer | Uint8Array;
  
 
 //import { TIMEOUT } from "dns";
@@ -65,17 +67,18 @@ export async function logError(str: any, isObj: boolean = false) {
   }
 };
 
-export function md5Sig(contentData: ArrayBuffer = undefined) {
+export function md5Sig(contentData: BinaryLike = undefined) {
 
   try {
 
-    var dec = new TextDecoder("utf-8");
-    const arrMid = Math.round(contentData.byteLength / 2);
+    const dec = new TextDecoder("utf-8");
+    const data = contentData instanceof Uint8Array ? contentData : new Uint8Array(contentData);
+    const arrMid = Math.round(data.byteLength / 2);
     const chunk = 15000;
     const signature = md5([
-      contentData.slice(0, chunk),
-      contentData.slice(arrMid, arrMid + chunk),
-      contentData.slice(-chunk)
+      data.slice(0, chunk),
+      data.slice(arrMid, arrMid + chunk),
+      data.slice(-chunk)
     ].map(x => dec.decode(x)).join()
     ).toString();
  
@@ -212,9 +215,9 @@ export async function copyFromDisk(src: string, dest: string): Promise<null> {
 export async function base64ToBuff(data: string): Promise<ArrayBuffer> {
   logError("base64ToBuff: \r\n", false);
   try {
-    const BufferData = Buffer.from(data.split("base64,")[1], 'base64');
-    logError(BufferData);
-    return BufferData;
+    const bufferData = Buffer.from(data.split("base64,")[1], 'base64');
+    logError(bufferData);
+    return bufferData.buffer.slice(bufferData.byteOffset, bufferData.byteOffset + bufferData.byteLength);
   }
   catch (e) {
 
@@ -248,7 +251,8 @@ export async function readFromDisk(file: string): Promise<ArrayBuffer> {
 
   try {
     const data = await fs2.readFile(file, null);
-    return Buffer.from(data);
+    const buffer = Buffer.from(data);
+    return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
   }
   catch (e) {
 
@@ -276,15 +280,15 @@ export async function downloadImage(url: string): Promise<ArrayBuffer> {
   }
 }
 
-export async function getFileExt(content: ArrayBuffer, link: string) {
+export async function getFileExt(content: BinaryLike, link: string) {
 
   const fileExtByLink = path.extname(link).replace("\.", "");
-  const fileExtByBuffer = (await fromBuffer(content))?.ext;
+  const buffer = content instanceof Uint8Array ? content : new Uint8Array(content);
+  const fileExtByBuffer = (await fileTypeFromBuffer(buffer))?.ext;
 
   // if XML, probably it is SVG
   if (fileExtByBuffer == "xml" || !fileExtByBuffer) {
-    const buffer = Buffer.from(content);
-    if (isSvg(buffer)) return "svg";
+    if (isSvg(new TextDecoder("utf-8").decode(buffer))) return "svg";
   }
 
 
@@ -391,5 +395,3 @@ export async function blobToJpegArrayBuffer(blob: Blob, imgQuality: number, imgT
     reader.readAsDataURL(blob);
   });
 }
-
- 

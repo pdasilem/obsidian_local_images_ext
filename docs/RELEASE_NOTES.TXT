@@ -1,18 +1,22 @@
-0.16.4 
+0.16.5
+Add: Files larger than the configured limit can be saved into a dedicated media subfolder.
+Add: New attachment naming strategy based on note name and attachment counter.
+
+0.16.4
 Add: Excluded folders
 Add: WEBP compression
 
-0.16.3 
+0.16.3
 Fix: The plugin can delete subfolders in attachment folders as orphans (bug)
 
-0.16.2 
+0.16.2
 Fix: Unable to download any filetypes from web
 
 0.16.1
 Fix: Bug with image size conversion
 
 0.16.0
-Fix: Support for Obsidian Web Clipper 
+Fix: Support for Obsidian Web Clipper
 Fix: Some canvas attached files might be moved as orphans.
 Fix: Removed Jimp library
 Fix: The image size in the link anchor in markdown is converted to the image size in wikilink  (The option "Preserve link captions" should be enabled)
@@ -23,18 +27,18 @@ Add: Date formatting
 0.15.9
 Fix: Compatibility with some plugins (local REST API etc)
 Add: Option to not create attachments folder (for compatibility reasons)
- 
+
 0.15.8
 Fix: Broken canvas support
 Fix: Some fixes to clipboard algorithm, e.g. Unable to process some huge pasted files  (But still I do not recommend to copy/paste big files)
 Add: Option to convert PNG images to JPEG with various quality
 Add: Command to convert selection from html to markdown (for some notes with mixed html/markdown content).
 Add: Option to enable debug output to console
-Add: Option to send photos from your front-facing camera to the author ([just kidding](https://github.com/Sergei-Korneev/obsidian-local-images-plus/issues/43)) 
+Add: Option to send photos from your front-facing camera to the author ([just kidding](https://github.com/pdasilem/obsidian_local_images_ext/issues/43))
 
 
 0.15.7
-Add: Commands to remove orphaned attachments. 
+Add: Commands to remove orphaned attachments.
 Fix: Bug in version 0.14.6
 
 0.15.5
@@ -60,7 +64,7 @@ Fix: Content parsing issues on some sites.
 Add: Option to retry download attempts several times on each attachment.
 Add: A modal window to confirm all notes processing.
 Add: Support for base64 encoded data.
-Add: Command to rename a note according to the first found # header. 
+Add: Command to rename a note according to the first found # header.
      (It is useful for me ;) when I copy/pasting entire webpages.)
 
 
@@ -70,13 +74,13 @@ Fix: Minor code edits.
 Add: Menu command.
 
 0.15.0
-Fix: Unable to copy URI encoded file:// protocol links. 
+Fix: Unable to copy URI encoded file:// protocol links.
      Now it is possible to use URI in file links. e.g. ')' as %29, '('  as %28 etc.
 Fix: Asynchronous access to files.
-Add: Assign paths for attachments in a more versatile way with templates (${date} and ${notename}). 
+Add: Assign paths for attachments in a more versatile way with templates (${date} and ${notename}).
 Add: Option to handle all new created (cloud-synced etc) markdown files.
 Add: Canvas support.
-Add: Option to process clipboard events.  
+Add: Option to process clipboard events.
 
 0.14.9
 Fix: File naming algorithm might return the same name for similar images.
@@ -89,18 +93,18 @@ Add: Option to preserve original link captions.
 - Fix: Rolled back a change in the code made in 0.14.7 which leaded to unability to download images on some webpages.
        e.g. https://www.zdnet.com might return "Processed, but nothing was changed".
 - Add: Option to select relative/absolute path in tags.
-- Add: Option to select prefix/suffix for media subfolder. 
+- Add: Option to select prefix/suffix for media subfolder.
 
 0.14.7
 - Fix: URL pattern issue
 - Add: Option not to save unknown filetypes.
-- Add: Option to limit file size. 
+- Add: Option to limit file size.
 
 0.14.6
 - Fix: Regex issues and better parsing.
-- Fix: Improved error handling. 
+- Fix: Improved error handling.
        For example the plugin now shows warning when some attachments were not downloaded due to errors (network, etc.).
-       In this case a note content will be partially changed. 
+       In this case a note content will be partially changed.
 - Add: The option "add **original filename**" was replaced with "add  [[original filename]]" as more useful in my opinion.
 - Add: Dropdown menu to select an attachments destination folder.
 
@@ -108,7 +112,7 @@ Add: Option to preserve original link captions.
 - Fix: Some file:// links with '()' and '[]' in path cannot be processed.
 - Fix: Better regex parsing.
 - Fix: Duplicates when mass processing.
-- Fix: Filenames are now generated according to MD5 by their 10k signatures. 
+- Fix: Filenames are now generated according to MD5 by their 10k signatures.
 - Add: Option to add original filename before replaced tag (only for file:// protocol).
 - Add: Option to store all attachments in folder next to a markdown note.
 
@@ -121,4 +125,3 @@ Add: Option to preserve original link captions.
 0.14.3
 - Fix: Several bugs on new Obsidian versions.
 - Add: Option "Use wikilinks format for replaced links"
-

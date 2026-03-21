@@ -4,9 +4,11 @@ import rollupJson from "@rollup/plugin-json";
 import commonjs from "@rollup/plugin-commonjs";
 import execute from "rollup-plugin-execute";
 import path from "path";
+import { fileURLToPath } from "url";
 
 const isProd = process.env.BUILD === "production";
 
+const __filename = fileURLToPath(import.meta.url);
 const currentDir = path.dirname(__filename);
 
 const banner = `/*
@@ -18,7 +20,7 @@ if you want to view the source visit the plugins github repository
 export default {
   input: "src/main.ts",
   output: {
-    dir: "obsidian_local_images_plus_latest",
+    dir: "obsidian_local_images_ext_latest",
     sourcemap: "inline",
     sourcemapExcludeSources: isProd,
     format: "cjs",
@@ -28,11 +30,14 @@ export default {
   external: ["obsidian"],
   plugins: [
     execute([
-      ` mkdir -p ${currentDir}/obsidian_local_images_plus_latest`,
-      ` cp -u ${currentDir}/manifest.json ${currentDir}/obsidian_local_images_plus_latest/manifest.json`,
-      ` cp -u ${currentDir}/styles.css ${currentDir}/obsidian_local_images_plus_latest/styles.css`,
+      ` mkdir -p ${currentDir}/obsidian_local_images_ext_latest`,
+      ` cp -u ${currentDir}/manifest.json ${currentDir}/obsidian_local_images_ext_latest/manifest.json`,
+      ` cp -u ${currentDir}/styles.css ${currentDir}/obsidian_local_images_ext_latest/styles.css`,
     ]),
-    typescript(),
+    typescript({
+      tsconfig: "./tsconfig.json",
+      outDir: "obsidian_local_images_ext_latest",
+    }),
     nodeResolve({ browser: true }),
     rollupJson(),
     commonjs(),

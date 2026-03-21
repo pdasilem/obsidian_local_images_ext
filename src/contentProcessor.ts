@@ -24,6 +24,7 @@ import {
 } from "./utils";
 
 import {
+  AttachmentNamingStrategy,
   ISettings,
   SUPPORTED_OS
 } from "./config";
@@ -32,7 +33,13 @@ import {
 import AsyncLock from "async-lock";
 import moment from "moment";
 
-export function imageTagProcessor(app: Plugin,
+type LocalImagesPluginLike = Plugin & {
+  ensureFolderExists(folderPath: string): Promise<void>;
+};
+
+const NOTE_ATTACHMENT_NAME_MAX_LENGTH = 20;
+
+export function imageTagProcessor(app: LocalImagesPluginLike,
   noteFile: TFile,
   settings: ISettings,
   defaultdir: boolean
@@ -58,8 +65,6 @@ export function imageTagProcessor(app: Plugin,
       let fpath;
       let fileData: ArrayBuffer;
       const opsys = process.platform;
-      const mediaDir = await getMDir(app.app, noteFile, settings, defaultdir, unique);
-      await app.ensureFolderExists(mediaDir);
       const protocol = link.slice(0, 5);
 
       if (protocol == "data:") {
@@ -100,6 +105,16 @@ export function imageTagProcessor(app: Plugin,
         return null;
       }
 
+      const mediaDir = await getTargetMediaDir(
+        app.app,
+        noteFile,
+        settings,
+        fileData.byteLength,
+        defaultdir,
+        unique
+      );
+      await app.ensureFolderExists(mediaDir);
+
       try {
 
 
@@ -120,10 +135,12 @@ export function imageTagProcessor(app: Plugin,
             logError("arbuf: ")
             logError(fileData)
           }
-          const { fileName, needWrite } = await chooseFileName(
+          const { fileName, needWrite } = await chooseAttachmentPath(
             app.app.vault.adapter,
             mediaDir,
+            noteFile,
             link,
+            fileExt,
             fileData,
             settings
           );
@@ -300,6 +317,27 @@ export async function getMDir(app: App,
 
 }
 
+export async function getTargetMediaDir(app: App,
+  noteFile: TFile,
+  settings: ISettings,
+  byteLength: number,
+  defaultdir: boolean = false,
+  unique: string = ""): Promise<string> {
+
+  const mediaDir = await getMDir(app, noteFile, settings, defaultdir, unique);
+  const fileSizeKb = Math.round(byteLength / 1024);
+  const oversizeSubdir = trimAny(settings.oversizeMediaSubdir, ["/", "\\", " "]);
+
+  if (
+    settings.maxMediaFileSizeKb <= 0 ||
+    fileSizeKb <= settings.maxMediaFileSizeKb ||
+    oversizeSubdir.length === 0
+  ) {
+    return mediaDir;
+  }
+
+  return trimAny(pathJoin([mediaDir, oversizeSubdir]), ["/", "\\"]);
+}
 
 
 
@@ -309,16 +347,94 @@ export async function getMDir(app: App,
 
 
 
-async function chooseFileName(
+
+export function getAttachmentNamingStrategy(settings: ISettings): AttachmentNamingStrategy {
+  if (settings.newAttachmentNaming) {
+    return settings.newAttachmentNaming;
+  }
+
+  return settings.useMD5ForNewAtt ? "md5" : "originalName";
+}
+
+function getNoteAttachmentBaseName(noteFile: TFile): string {
+  const truncatedName = noteFile.basename.slice(0, NOTE_ATTACHMENT_NAME_MAX_LENGTH);
+  const normalizedName = truncatedName.replace(/ /g, "_");
+  const safeName = cFileName(normalizedName);
+
+  return safeName.length > 0 ? safeName : "attachment";
+}
+
+function getOriginalAttachmentBaseName(link: string, noteFile: TFile): string {
+  try {
+    const parsedUrl = new URL(link);
+    const rawName = path.parse(decodeURI(parsedUrl.pathname)).name;
+    const safeName = cFileName(rawName);
+
+    if (safeName.length > 0) {
+      return safeName;
+    }
+  } catch (error) {
+    logError(error);
+  }
+
+  return getNoteAttachmentBaseName(noteFile);
+}
+
+async function getNextNoteAttachmentCounter(
   adapter: DataAdapter,
   dir: string,
+  baseName: string
+): Promise<number> {
+  const listed = await adapter.list(dir);
+  const counterPattern = new RegExp(`^${baseName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-([0-9]+)(\\..+)?$`);
+  let maxCounter = 0;
+
+  for (const filePath of listed.files) {
+    const fileName = path.basename(filePath);
+    const match = fileName.match(counterPattern);
+    if (!match) {
+      continue;
+    }
+
+    const currentCounter = Number(match[1]);
+    if (!isNaN(currentCounter) && currentCounter > maxCounter) {
+      maxCounter = currentCounter;
+    }
+  }
+
+  return maxCounter + 1;
+}
+
+async function getNextOriginalNamePath(
+  adapter: DataAdapter,
+  dir: string,
+  baseName: string,
+  fileExt: string
+): Promise<string> {
+  let candidate = pathJoin([dir, cFileName(`${baseName}.${fileExt}`)]);
+  if (!await adapter.exists(candidate, false)) {
+    return candidate;
+  }
+
+  let inc = 1;
+  while (await adapter.exists(candidate, false)) {
+    candidate = pathJoin([dir, cFileName(`(${inc}) ${baseName}.${fileExt}`)]);
+    inc++;
+  }
+
+  return candidate;
+}
+
+export async function chooseAttachmentPath(
+  adapter: DataAdapter,
+  dir: string,
+  noteFile: TFile,
   link: string,
-  contentData: ArrayBuffer,
+  fileExt: string,
+  contentData: ArrayBuffer | Uint8Array,
   settings: ISettings
 ): Promise<{ fileName: string; needWrite: boolean }> {
-  const parsedUrl = new URL(link);
   const ignoredExt = settings.ignoredExt.split("|");
-  let fileExt = await getFileExt(contentData, parsedUrl.pathname);
   logError("file: " + link + " content: " + contentData + " file ext: " + fileExt, false);
 
 
@@ -335,24 +451,34 @@ async function chooseFileName(
 
 
 
+  const strategy = getAttachmentNamingStrategy(settings);
   const baseName = md5Sig(contentData);
 
   let needWrite = true;
   let fileName = "";
-  const suggestedName = pathJoin([dir, cFileName(`${baseName}` + `.${fileExt}`)]);
-  if (await adapter.exists(suggestedName, false)) {
-    const fileData = await adapter.readBinary(suggestedName);
-    const existing_file_md5 = md5Sig(fileData);
-    if (existing_file_md5 === baseName) {
-      fileName = suggestedName;
-      needWrite = false;
-    }
-    else {
-      fileName = pathJoin([dir, cFileName(Math.random().toString(9).slice(2,) + `.${fileExt}`)]);
-    }
+  if (strategy === "md5") {
+    const suggestedName = pathJoin([dir, cFileName(`${baseName}` + `.${fileExt}`)]);
+    if (await adapter.exists(suggestedName, false)) {
+      const fileData = await adapter.readBinary(suggestedName);
+      const existing_file_md5 = md5Sig(fileData);
+      if (existing_file_md5 === baseName) {
+        fileName = suggestedName;
+        needWrite = false;
+      }
+      else {
+        fileName = pathJoin([dir, cFileName(Math.random().toString(9).slice(2,) + `.${fileExt}`)]);
+      }
 
+    } else {
+      fileName = suggestedName;
+    }
+  } else if (strategy === "noteNameCounter") {
+    const noteBaseName = getNoteAttachmentBaseName(noteFile);
+    const counter = await getNextNoteAttachmentCounter(adapter, dir, noteBaseName);
+    fileName = pathJoin([dir, cFileName(`${noteBaseName}-${counter}.${fileExt}`)]);
   } else {
-    fileName = suggestedName;
+    const originalBaseName = getOriginalAttachmentBaseName(link, noteFile);
+    fileName = await getNextOriginalNamePath(adapter, dir, originalBaseName, fileExt);
   }
 
   logError("File name: " + fileName, false);

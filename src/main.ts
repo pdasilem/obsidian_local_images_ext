@@ -15,6 +15,8 @@ import {
   getMDir,
   getRDir,
   FrontMatterParser,
+  chooseAttachmentPath,
+  getAttachmentNamingStrategy,
 } from "./contentProcessor"
 
 import {
@@ -46,7 +48,6 @@ import {
 import { UniqueQueue } from "./uniqueQueue"
 import path from "path"
 import { ModalW1 } from "./modal"
-import { isNull } from "util"
 const fs = require('fs').promises;
 
 
@@ -65,6 +66,25 @@ export default class LocalImagesPlugin extends Plugin {
   noteModified: Array<TFile> = []
   newfMoveReq: boolean = true
   newfCreatedByDownloader: Array<string> = []
+
+  private getFilesInFolderTree(folder: TFolder | null): TFile[] {
+    if (!folder) {
+      return []
+    }
+
+    const files: TFile[] = []
+
+    for (const child of folder.children) {
+      if (child instanceof TFile) {
+        files.push(child)
+      }
+      else if (child instanceof TFolder) {
+        files.push(...this.getFilesInFolderTree(child))
+      }
+    }
+
+    return files
+  }
 
 
 
@@ -163,8 +183,7 @@ export default class LocalImagesPlugin extends Plugin {
       let rootdir = this.settings.mediaRootDir
       const useSysTrash = (this.app.vault.getConfig("trashOption") === "system")
     
-      if (this.settings.saveAttE !== "obsFolder" &&
-        path.basename(rootdir).includes("${notename}") &&
+      if (path.basename(rootdir).includes("${notename}") &&
         !rootdir.includes("${date}")) {
 
         rootdir = rootdir.replace("${notename}", file.basename)
@@ -175,7 +194,7 @@ export default class LocalImagesPlugin extends Plugin {
 
         try {
           if (this.app.vault.getAbstractFileByPath(rootdir) instanceof TFolder) {
-            this.app.vault.trash(app.vault.getAbstractFileByPath(rootdir), useSysTrash)
+            this.app.vault.trash(this.app.vault.getAbstractFileByPath(rootdir), useSysTrash)
             showBalloon("Attachment folder " + rootdir + " was moved to trash can.", this.settings.showNotifications)
           }
         } catch (e) {
@@ -303,7 +322,7 @@ export default class LocalImagesPlugin extends Plugin {
 
   private getCurrentNote(): TFile | null {
     try {
-      const noteFile = app.workspace.activeEditor.file
+      const noteFile = this.app.workspace.activeEditor?.file ?? null
       return noteFile
     } catch (e) {
       showBalloon("Cannot get current note! ", this.settings.showNotifications)
@@ -477,12 +496,12 @@ export default class LocalImagesPlugin extends Plugin {
 
   private removeOrphans = (type: string = undefined, filesToRemove: Array<TFile> = undefined, noteFile: TFile = undefined) => async () => {
 
-      const obsmediadir = app.vault.getConfig("attachmentFolderPath")
+      const obsmediadir = this.app.vault.getConfig("attachmentFolderPath")
       const allFiles = this.app.vault.getFiles()
       let oldRootdir = this.settings.mediaRootDir
 
       if (type == "plugin") {
-        let orphanedAttachments = []
+        let orphanedAttachments: TFile[] = []
         let allAttachmentsLinks = []
         if (this.settings.saveAttE != "nextToNoteS" ||
           !path.basename(oldRootdir).endsWith("${notename}") ||
@@ -509,7 +528,7 @@ export default class LocalImagesPlugin extends Plugin {
             showBalloon("The attachment folder " + oldRootdir + " does not exist!", this.settings.showNotifications)
             return
           }
-          const allAttachments = await this.app.vault.getAbstractFileByPath(oldRootdir)?.children
+          const allAttachments = this.getFilesInFolderTree(this.app.vault.getAbstractFileByPath(oldRootdir) as TFolder | null)
           const metaCache = this.app.metadataCache.getFileCache(noteFile)
           const embeds = metaCache?.embeds
           const links = metaCache?.links
@@ -534,7 +553,7 @@ export default class LocalImagesPlugin extends Plugin {
           }
           if (allAttachments) {
             for (const attach of allAttachments) {
-              if (!allAttachmentsLinks.includes(attach.name) && attach.children == undefined ) {
+              if (!allAttachmentsLinks.includes(attach.name)) {
                 logError("orph: " + attach.basename)
                 orphanedAttachments.push(attach)
               }
@@ -566,8 +585,8 @@ export default class LocalImagesPlugin extends Plugin {
           return
         }
 
-        const allAttachments = this.app.vault.getAbstractFileByPath(obsmediadir)?.children
-        let orphanedAttachments = []
+        const allAttachments = this.getFilesInFolderTree(this.app.vault.getAbstractFileByPath(obsmediadir) as TFolder | null)
+        let orphanedAttachments: TFile[] = []
         let allAttachmentsLinks = []
         
         
@@ -585,7 +604,7 @@ export default class LocalImagesPlugin extends Plugin {
    
               let canvasData
               try {
-                canvasData = JSON.parse(await app.vault.cachedRead(file))
+                canvasData = JSON.parse(await this.app.vault.cachedRead(file))
               } catch (e) {
                 logError("Parse canvas data error")  
                 continue
@@ -651,7 +670,7 @@ export default class LocalImagesPlugin extends Plugin {
         }
 
           for (const attach of allAttachments) {
-            if (!allAttachmentsLinks.includes(attach.name) && attach.children == undefined ) {
+            if (!allAttachmentsLinks.includes(attach.name)) {
               logError(allAttachmentsLinks)
               logError(attach.name)
               logError("orph: " + attach.name)
@@ -921,21 +940,43 @@ export default class LocalImagesPlugin extends Plugin {
                 newMD5 = md5Sig(newBinData)
                 logError(newBinData)
                 if (newBinData != null) {
-
-                  if (this.settings.useMD5ForNewAtt) {
-                    newpath = pathJoin([mdir, newMD5 + compExt])
-                  } else {
-                    newpath = pathJoin([mdir, cFileName(path.parse(el.link)?.name + compExt)])
-                  }
+                  const chosenPath = await chooseAttachmentPath(
+                    this.app.vault.adapter,
+                    mdir,
+                    note,
+                    el.link,
+                    compExt.replace(".", ""),
+                    newBinData,
+                    this.settings
+                  )
+                  newpath = chosenPath.fileName
                   newlink = await getRDir(note, this.settings, newpath)
                 }
 
-              } else if (this.settings.useMD5ForNewAtt) {
-                newpath = pathJoin([mdir, oldMD5 + path.extname(el.link)])
+              } else if (getAttachmentNamingStrategy(this.settings) === "md5") {
+                const chosenPath = await chooseAttachmentPath(
+                  this.app.vault.adapter,
+                  mdir,
+                  note,
+                  el.link,
+                  fileExt,
+                  oldBinData,
+                  this.settings
+                )
+                newpath = chosenPath.fileName
                 newlink = await getRDir(note, this.settings, newpath)
 
-              } else if (!this.settings.useMD5ForNewAtt) {
-                newpath = pathJoin([mdir, cFileName(path.basename(el.link))])
+              } else {
+                const chosenPath = await chooseAttachmentPath(
+                  this.app.vault.adapter,
+                  mdir,
+                  note,
+                  el.link,
+                  fileExt,
+                  oldBinData,
+                  this.settings
+                )
+                newpath = chosenPath.fileName
                 newlink = await getRDir(note, this.settings, newpath)
               }
 
@@ -1079,11 +1120,11 @@ export default class LocalImagesPlugin extends Plugin {
   }
 
   private convertSelToURI = async () => {
-    this.app.workspace.activeEditor.editor.replaceSelection(encObsURI(await this.app.workspace.activeEditor.getSelection()))
+    this.app.workspace.activeEditor?.editor.replaceSelection(encObsURI(this.app.workspace.activeEditor?.editor.getSelection() ?? ""))
   }
 
   private convertSelToMD = async () => {
-    this.app.workspace.activeEditor.editor.replaceSelection(htmlToMarkdown(await this.app.workspace.activeEditor.getSelection()))
+    this.app.workspace.activeEditor?.editor.replaceSelection(htmlToMarkdown(this.app.workspace.activeEditor?.editor.getSelection() ?? ""))
   }
 
 
@@ -1119,6 +1160,10 @@ export default class LocalImagesPlugin extends Plugin {
 
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData())
+    if (!this.settings.newAttachmentNaming) {
+      this.settings.newAttachmentNaming = this.settings.useMD5ForNewAtt ? "md5" : "originalName"
+    }
+    this.settings.useMD5ForNewAtt = this.settings.newAttachmentNaming === "md5"
     this.setupQueueInterval()
   }
 

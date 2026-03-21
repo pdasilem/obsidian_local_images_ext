@@ -42,6 +42,14 @@ export default class SettingTab extends PluginSettingTab {
                     el.show()
                 }
             }
+            if (el.getAttr("class").includes("oversize_folder_set")) {
+                if (this.plugin.settings.maxMediaFileSizeKb > 0) {
+                    el.show()
+                }
+                else {
+                    el.hide()
+                }
+            }
         })
     }
 
@@ -188,13 +196,17 @@ export default class SettingTab extends PluginSettingTab {
             )
 
         new Setting(containerEl)
-            .setName("Use MD5 for new attachments (Pasted images and files)")
-            .setDesc("The plugin will use MD5 when renaming all new attachments.")
-            .addToggle((toggle) =>
-                toggle
-                    .setValue(this.plugin.settings.useMD5ForNewAtt)
+            .setName("Naming for new attachments")
+            .setDesc("Choose how new attachments will be renamed when saved.")
+            .addDropdown((dropdown) =>
+                dropdown
+                    .addOption("md5", "MD5 hash")
+                    .addOption("originalName", "Original filename")
+                    .addOption("noteNameCounter", "Note name + counter")
+                    .setValue(this.plugin.settings.newAttachmentNaming)
                     .onChange(async (value) => {
-                        this.plugin.settings.useMD5ForNewAtt = value
+                        this.plugin.settings.newAttachmentNaming = value as "md5" | "originalName" | "noteNameCounter"
+                        this.plugin.settings.useMD5ForNewAtt = value === "md5"
                         await this.plugin.saveSettings()
                     })
             )
@@ -328,6 +340,35 @@ export default class SettingTab extends PluginSettingTab {
                             numberValue = 0
                         }
                         this.plugin.settings.filesizeLimit = numberValue
+                        await this.plugin.saveSettings()
+                    })
+            )
+
+        new Setting(containerEl)
+            .setName("File size upper limit in Kb")
+            .setDesc("Files larger than this value will be saved in the oversized media subfolder. Set 0 for no limit.")
+            .addText((text) =>
+                text
+                    .setValue(String(this.plugin.settings.maxMediaFileSizeKb))
+                    .onChange(async (value: string) => {
+
+                        let numberValue = Number(value)
+                        if (
+                            isNaN(numberValue) ||
+                            !Number.isInteger(numberValue) ||
+                            numberValue < 0
+                        ) {
+                            displayError(
+                                "The value should be a positive integer!"
+                            )
+                            return
+                        }
+
+                        if (numberValue < 0) {
+                            numberValue = 0
+                        }
+                        this.plugin.settings.maxMediaFileSizeKb = numberValue
+                        this.displSw(containerEl)
                         await this.plugin.saveSettings()
                     })
             )
@@ -527,6 +568,26 @@ export default class SettingTab extends PluginSettingTab {
 
 
 
+            )
+
+        new Setting(containerEl)
+            .setName("Oversized media subfolder")
+            .setDesc("Relative subfolder inside the media folder for files exceeding the upper size limit.")
+            .setClass("media_folder_set oversize_folder_set")
+            .addText((text) =>
+                text
+                    .setValue(this.plugin.settings.oversizeMediaSubdir)
+                    .onChange(async (value) => {
+
+                        if (value.match(/(\)|\(|\"|\'|\#|\]|\[|\:|\>|\<|\*|\|)/g) !== null) {
+                            displayError(
+                                "Unsafe folder name! Some chars are forbidden in some filesystems."
+                            )
+                            return
+                        }
+                        this.plugin.settings.oversizeMediaSubdir = value
+                        await this.plugin.saveSettings()
+                    })
             )
 
 

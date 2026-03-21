@@ -1,10 +1,10 @@
-# Obsidian Local Images Plus
+# Obsidian Local Images Ext
 
-Obsidian Local Images Plus is a plugin for [Obsidian](https://obsidian.md/) 
+Obsidian Local Images Ext is a plugin for [Obsidian](https://obsidian.md/) 
 
 ***
 
-**By using this software, you accept all terms and agree to the [license agreement](https://github.com/Sergei-Korneev/obsidian-local-images-plus/blob/main/LICENSE).**
+**By using this software, you accept all terms and agree to the [license agreement](https://github.com/pdasilem/obsidian_local_images_ext/blob/main/LICENSE).**
 
 **The author of this software is not obligated to provide any form of support and assumes no liability.**
 
@@ -28,7 +28,7 @@ Obsidian Local Images Plus is a plugin for [Obsidian](https://obsidian.md/)
 
 ## Installation
 
-- Download the latest version from [GitHub](https://github.com/Sergei-Korneev/obsidian-local-images-plus) / [GitHub page](https://sergei-korneev.github.io/obsidian-local-images-plus). [Read release notes](https://github.com/Sergei-Korneev/obsidian-local-images-plus/releases).
+- Download the latest version from [GitHub](https://github.com/pdasilem/obsidian_local_images_ext) / [GitHub page](https://pdasilem.github.io/obsidian_local_images_ext). [Read release notes](https://github.com/pdasilem/obsidian_local_images_ext/releases).
 - Remove obsidian-local-images plugin to avoid any conflicts.
 - Extract the archive into your Obsidian vault (e.g. Myvault/.obsidian/plugins)
 - Restart Obsidian.
