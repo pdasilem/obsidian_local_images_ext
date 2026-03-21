@@ -1,3 +1,7 @@
+0.17.8
+Fix: Existing notes now process newly added media links and attachments from markdown modifications instead of relying on the 1000 ms file-creation window.
+Fix: Local oversized attachment detection now uses a size probe based on the configured upper size limit, so manual processing places large files into the oversized subfolder correctly.
+
 0.17.7
 Fix: Reprocessing no longer renames attachments again when Note name + counter naming is enabled and the current file name already matches the note-name pattern.
 

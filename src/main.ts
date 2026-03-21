@@ -268,8 +268,6 @@ export default class LocalImagesPlugin extends Plugin {
     // Some file has been modified
 
     this.app.vault.on('modify', async (file: TFile) => {
-      if (!this.newfMoveReq)
-        return
       logError("File modified: " + file.path , false)
  
       if (!file ||
@@ -472,14 +470,20 @@ export default class LocalImagesPlugin extends Plugin {
         continue
       }
 
-      const oldBinData = await readFromDiskB(pathJoin([this.app.vault.adapter.basePath, oldpath]), 5000)
+      const oversizeLimitBytes = this.settings.maxMediaFileSizeKb > 0
+        ? this.settings.maxMediaFileSizeKb * 1024
+        : 0
+      const sizeProbeBytes = oversizeLimitBytes > 0 ? oversizeLimitBytes + 1 : undefined
+      const oldSizeProbe = await readFromDiskB(pathJoin([this.app.vault.adapter.basePath, oldpath]), sizeProbeBytes)
+      const sizeForTargetDir = oldSizeProbe?.byteLength ?? 0
+      const oldBinData = await this.app.vault.adapter.readBinary(oldpath)
       const oldMD5 = md5Sig(oldBinData)
       const fileExt = await getFileExt(oldBinData, oldpath)
       const attachmentNamingStrategy = getAttachmentNamingStrategy(this.settings)
       const shouldPreserveCurrentCounterName =
         attachmentNamingStrategy === "noteNameCounter" &&
         matchesNoteNameCounterPattern(note, oldpath)
-      let targetDir = await getTargetMediaDir(this.app, note, this.settings, oldBinData.byteLength, defaultdir)
+      let targetDir = await getTargetMediaDir(this.app, note, this.settings, sizeForTargetDir, defaultdir)
       await this.ensureFolderExists(targetDir)
 
       let newpath = pathJoin([targetDir, cFileName(path.basename(el.link))])
@@ -542,7 +546,7 @@ export default class LocalImagesPlugin extends Plugin {
         if (newBinData != null) {
           newFMD5 = md5Sig(await this.app.vault.adapter.readBinary(newpath))
         } else {
-          newFMD5 = md5Sig(await readFromDiskB(pathJoin([this.app.vault.adapter.basePath, newpath]), 5000))
+          newFMD5 = md5Sig(await this.app.vault.adapter.readBinary(newpath))
         }
 
         if (newMD5 === newFMD5 || (oldMD5 === newFMD5 && oldpath != newpath)) {
@@ -984,6 +988,9 @@ export default class LocalImagesPlugin extends Plugin {
   
         this.enqueueActivePage(file)
         this.setupQueueInterval()
+        if (!this.noteModified.includes(file)) {
+          this.noteModified.push(file)
+        }
         this.setupNewMdFilesProcInterval()
  
     
@@ -998,17 +1005,9 @@ export default class LocalImagesPlugin extends Plugin {
       !(this.settings.processAll))
       return
 
-    if (!file.stat.ctime)
-      return
-
-    const timeGapMs = Math.abs(Date.now() - file.stat.mtime)
-
-    if (timeGapMs > TIME_DIFF)
-      return
-
-    this.newfCreated.push(file.path)
-    this.newfMoveReq = true
-    this.setupNewMdFilesProcInterval()
+    if (!this.newfCreated.includes(file.path)) {
+      this.newfCreated.push(file.path)
+    }
     logError("file created  ")
   }
 
@@ -1066,7 +1065,9 @@ export default class LocalImagesPlugin extends Plugin {
           }
         }
 
- 
+        if (pr) {
+          await this.processPage(note, false)
+        }
         await this.processLocalAttachmentsForNote(note, false, true, true)
       }
     } catch (e) {
