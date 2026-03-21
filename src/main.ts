@@ -16,6 +16,7 @@ import {
   getRDir,
   FrontMatterParser,
   chooseAttachmentPath,
+  getTargetMediaDir,
 } from "./contentProcessor"
 
 import {
@@ -428,7 +429,6 @@ export default class LocalImagesPlugin extends Plugin {
     let filedata = await this.app.vault.cachedRead(note)
     let itemcount = 0
     const useMdLinks = this.app.vault.getConfig("useMarkdownLinks")
-    const mdir = await getMDir(this.app, note, this.settings, defaultdir)
     const obsmdir = await getMDir(this.app, note, this.settings, true)
     const embeds = metaCache?.embeds
 
@@ -445,8 +445,6 @@ export default class LocalImagesPlugin extends Plugin {
       }
       return 0
     }
-
-    await this.ensureFolderExists(mdir)
 
     for (const el of embeds) {
       const oldpath = this.resolveEmbeddedAttachmentPath(note, el.link, obsmdir)
@@ -472,13 +470,16 @@ export default class LocalImagesPlugin extends Plugin {
         continue
       }
 
-      let newpath = pathJoin([mdir, cFileName(path.basename(el.link))])
-      let newlink: Array<string> = await getRDir(note, this.settings, newpath, undefined, useMdLinks)
-      let newBinData: ArrayBuffer | null = null
-      let newMD5: string | null = null
       const oldBinData = await readFromDiskB(pathJoin([this.app.vault.adapter.basePath, oldpath]), 5000)
       const oldMD5 = md5Sig(oldBinData)
       const fileExt = await getFileExt(oldBinData, oldpath)
+      let targetDir = await getTargetMediaDir(this.app, note, this.settings, oldBinData.byteLength, defaultdir)
+      await this.ensureFolderExists(targetDir)
+
+      let newpath = pathJoin([targetDir, cFileName(path.basename(el.link))])
+      let newlink: Array<string> = await getRDir(note, this.settings, newpath, undefined, useMdLinks)
+      let newBinData: ArrayBuffer | null = null
+      let newMD5: string | null = null
 
       if (this.settings.PngToJpegLocal && fileExt == "png") {
         let compType = "image/jpg"
@@ -494,9 +495,11 @@ export default class LocalImagesPlugin extends Plugin {
         newMD5 = md5Sig(newBinData)
 
         if (newBinData != null) {
+          targetDir = await getTargetMediaDir(this.app, note, this.settings, newBinData.byteLength, defaultdir)
+          await this.ensureFolderExists(targetDir)
           const chosenPath = await chooseAttachmentPath(
             this.app.vault.adapter,
-            mdir,
+            targetDir,
             note,
             el.link,
             compExt.replace(".", ""),
@@ -509,7 +512,7 @@ export default class LocalImagesPlugin extends Plugin {
       } else {
         const chosenPath = await chooseAttachmentPath(
           this.app.vault.adapter,
-          mdir,
+          targetDir,
           note,
           el.link,
           fileExt,
@@ -533,7 +536,7 @@ export default class LocalImagesPlugin extends Plugin {
         } else if (oldpath != newpath) {
           let inc = 1
           while (await this.app.vault.adapter.exists(newpath)) {
-            newpath = pathJoin([mdir, `(${inc}) ` + cFileName(path.basename(el.link))])
+            newpath = pathJoin([targetDir, `(${inc}) ` + cFileName(path.basename(el.link))])
             inc++
           }
 

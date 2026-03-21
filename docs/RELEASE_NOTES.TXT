@@ -1,3 +1,6 @@
+0.17.6
+Fix: Unified oversized media placement across all flows. Large local attachments now go to the configured oversized subfolder just like media links and button-driven processing.
+
 0.17.5
 Fix: Restored plugin name in ribbon tooltips for note processing actions.
 
