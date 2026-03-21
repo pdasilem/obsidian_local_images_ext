@@ -32,6 +32,10 @@ declare module "obsidian" {
   interface App {
     internalPlugins?: any;
   }
+
+  interface MetadataCache {
+    getFirstLinkpathDest?(linkpath: string, sourcePath: string): TFile | null;
+  }
 }
 
 export {};

@@ -1,4 +1,4 @@
-export const APP_TITLE = "Local Images Ext  0.17.0";
+export const APP_TITLE = "Local Images Ext  0.17.1";
 
 
 
@@ -52,7 +52,7 @@ export const ANY_URL_PATTERN = /[a-zA-Z\d]+:\/\/(\w+:\w+@)?([a-zA-Z\d.-]+\.[A-Za
 
 export const ATT_SIZE_ACHOR = /(^(?<attdesc>.{1,})\|(?<attsize>[0-9]{2,4})$)|(?<attsize2>^[0-9]{2,4}$)/gm
 
-export const TIME_DIFF = 500;
+export const TIME_DIFF = 1000;
 
 // Looks like timeouts in Obsidian API are set in milliseconds
 export const NOTICE_TIMEOUT = 5 * 1000;

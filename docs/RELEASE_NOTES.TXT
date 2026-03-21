@@ -1,3 +1,11 @@
+0.17.1
+Fix: New pasted attachments are detected more reliably with a larger creation time window.
+Add: Localize attachments commands now also apply move, rename and compression settings to local note attachments.
+Add: Vault-wide localization shows total, processed and remaining notes during processing.
+Add: Ribbon button for vault-wide localization.
+Fix: Manual localization resolves existing local attachments correctly for rename/move processing.
+Add: Attachments are renamed after note rename when noteNameCounter naming is enabled.
+
 0.17.0
 Add: Files larger than the configured limit can be saved into a dedicated media subfolder.
 Add: New attachment naming strategy based on note name and attachment counter.
