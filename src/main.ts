@@ -93,24 +93,24 @@ export default class LocalImagesPlugin extends Plugin {
 
     this.addCommand({
       id: "download-images",
-      name: "Localize attachments for the current note (plugin folder)",
+      name: "Process current note",
       callback: this.processActivePage(false),
     })
 
 
     this.addCommand({
       id: "download-images-def",
-      name: "Localize attachments for the current note (Obsidian folder)",
+      name: "Process current note (Obsidian folder)",
       callback: this.processActivePage(true),
     })
 
     if (!this.settings.disAddCom) {
 
-      this.addRibbonIcon("dice", APP_TITLE + "\r\nLocalize attachments (plugin folder)", () => {
+      this.addRibbonIcon("dice", "Process current note", () => {
         this.processActivePage(false)()
       });
 
-      this.addRibbonIcon("dice", APP_TITLE + "\r\nLocalize attachments for all notes (plugin folder)", () => {
+      this.addRibbonIcon("dice", "Process all notes", () => {
         this.openProcessAllModal()
       });
 
@@ -122,7 +122,7 @@ export default class LocalImagesPlugin extends Plugin {
 
       this.addCommand({
         id: "download-images-all",
-        name: "Localize attachments for all your notes (plugin folder)",
+        name: "Process all notes",
         callback: this.openProcessAllModal,
       })
 

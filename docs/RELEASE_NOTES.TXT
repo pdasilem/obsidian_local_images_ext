@@ -1,3 +1,6 @@
+0.17.4
+Change: Simplified command and ribbon labels for note processing actions.
+
 0.17.3
 Fix: Increased the minimum supported Obsidian version to 1.1.15 for reliable Canvas/API compatibility.
 
