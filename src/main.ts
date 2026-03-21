@@ -17,6 +17,8 @@ import {
   FrontMatterParser,
   chooseAttachmentPath,
   getTargetMediaDir,
+  getAttachmentNamingStrategy,
+  matchesNoteNameCounterPattern,
 } from "./contentProcessor"
 
 import {
@@ -473,6 +475,10 @@ export default class LocalImagesPlugin extends Plugin {
       const oldBinData = await readFromDiskB(pathJoin([this.app.vault.adapter.basePath, oldpath]), 5000)
       const oldMD5 = md5Sig(oldBinData)
       const fileExt = await getFileExt(oldBinData, oldpath)
+      const attachmentNamingStrategy = getAttachmentNamingStrategy(this.settings)
+      const shouldPreserveCurrentCounterName =
+        attachmentNamingStrategy === "noteNameCounter" &&
+        matchesNoteNameCounterPattern(note, oldpath)
       let targetDir = await getTargetMediaDir(this.app, note, this.settings, oldBinData.byteLength, defaultdir)
       await this.ensureFolderExists(targetDir)
 
@@ -497,29 +503,37 @@ export default class LocalImagesPlugin extends Plugin {
         if (newBinData != null) {
           targetDir = await getTargetMediaDir(this.app, note, this.settings, newBinData.byteLength, defaultdir)
           await this.ensureFolderExists(targetDir)
+          if (shouldPreserveCurrentCounterName) {
+            newpath = pathJoin([targetDir, cFileName(`${path.parse(oldpath).name}${compExt}`)])
+          } else {
+            const chosenPath = await chooseAttachmentPath(
+              this.app.vault.adapter,
+              targetDir,
+              note,
+              el.link,
+              compExt.replace(".", ""),
+              newBinData,
+              this.settings
+            )
+            newpath = chosenPath.fileName
+          }
+          newlink = await getRDir(note, this.settings, newpath, undefined, useMdLinks)
+        }
+      } else {
+        if (shouldPreserveCurrentCounterName) {
+          newpath = pathJoin([targetDir, cFileName(path.basename(oldpath))])
+        } else {
           const chosenPath = await chooseAttachmentPath(
             this.app.vault.adapter,
             targetDir,
             note,
             el.link,
-            compExt.replace(".", ""),
-            newBinData,
+            fileExt,
+            oldBinData,
             this.settings
           )
           newpath = chosenPath.fileName
-          newlink = await getRDir(note, this.settings, newpath, undefined, useMdLinks)
         }
-      } else {
-        const chosenPath = await chooseAttachmentPath(
-          this.app.vault.adapter,
-          targetDir,
-          note,
-          el.link,
-          fileExt,
-          oldBinData,
-          this.settings
-        )
-        newpath = chosenPath.fileName
         newlink = await getRDir(note, this.settings, newpath, undefined, useMdLinks)
       }
 

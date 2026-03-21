@@ -357,12 +357,20 @@ export function getAttachmentNamingStrategy(settings: ISettings): AttachmentNami
   return settings.useMD5ForNewAtt ? "md5" : "originalName";
 }
 
-function getNoteAttachmentBaseName(noteFile: TFile): string {
+export function getNoteAttachmentBaseName(noteFile: TFile): string {
   const truncatedName = noteFile.basename.slice(0, NOTE_ATTACHMENT_NAME_MAX_LENGTH);
   const normalizedName = truncatedName.replace(/ /g, "_");
   const safeName = cFileName(normalizedName);
 
   return safeName.length > 0 ? safeName : "attachment";
+}
+
+export function matchesNoteNameCounterPattern(noteFile: TFile, filePath: string): boolean {
+  const noteBaseName = getNoteAttachmentBaseName(noteFile);
+  const fileBaseName = path.parse(filePath).name;
+  const counterPattern = new RegExp(`^${noteBaseName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-\\d+$`);
+
+  return counterPattern.test(fileBaseName);
 }
 
 function getOriginalAttachmentBaseName(link: string, noteFile: TFile): string {
