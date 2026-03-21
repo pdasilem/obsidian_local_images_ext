@@ -1,3 +1,6 @@
+0.17.3
+Fix: Increased the minimum supported Obsidian version to 1.1.15 for reliable Canvas/API compatibility.
+
 0.17.2
 Fix: Relative-to-note path writing now produces correct wikilinks for localized attachments.
 
