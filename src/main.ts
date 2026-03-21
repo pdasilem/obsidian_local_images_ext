@@ -106,11 +106,11 @@ export default class LocalImagesPlugin extends Plugin {
 
     if (!this.settings.disAddCom) {
 
-      this.addRibbonIcon("dice", "Process current note", () => {
+      this.addRibbonIcon("dice", "Local Images\r\nProcess current note", () => {
         this.processActivePage(false)()
       });
 
-      this.addRibbonIcon("dice", "Process all notes", () => {
+      this.addRibbonIcon("dice", "Local Images\r\nProcess all notes", () => {
         this.openProcessAllModal()
       });
 

@@ -1,3 +1,6 @@
+0.17.5
+Fix: Restored plugin name in ribbon tooltips for note processing actions.
+
 0.17.4
 Change: Simplified command and ribbon labels for note processing actions.
 
