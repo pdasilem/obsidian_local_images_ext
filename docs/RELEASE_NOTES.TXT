@@ -1,4 +1,6 @@
-0.16.6
+0.17.0
+Add: Files larger than the configured limit can be saved into a dedicated media subfolder.
+Add: New attachment naming strategy based on note name and attachment counter.
 Fix: Oversized media subfolder is visible in settings and defaults to /big.
 
 0.16.5

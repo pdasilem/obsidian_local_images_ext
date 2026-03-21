@@ -1,4 +1,4 @@
-export const APP_TITLE = "Local Images Ext  0.16.6";
+export const APP_TITLE = "Local Images Ext  0.17.0";
 
 
 
