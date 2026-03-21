@@ -156,7 +156,7 @@ export function imageTagProcessor(app: LocalImagesPluginLike,
         if (fileName) {
 
           let shortName = "";
-          const rdir = await getRDir(noteFile, settings, fileName, link);
+          const rdir = await getRDir(noteFile, settings, fileName, link, app.app.vault.getConfig("useMarkdownLinks"));
           let pathWiki = rdir[0];
           let pathMd = rdir[1];
 
@@ -225,7 +225,8 @@ export function imageTagProcessor(app: LocalImagesPluginLike,
 export async function getRDir(noteFile: TFile,
   settings: ISettings,
   fileName: string,
-  link: string = undefined):
+  link: string = undefined,
+  useMarkdownLinks: boolean = true):
   Promise<Array<any>> {
   let pathWiki = "";
   let pathMd = "";
@@ -247,8 +248,8 @@ export async function getRDir(noteFile: TFile,
       pathWiki = pathMd = parsedPathE["basen"];
       break;
     case "onlyRelative":
-      pathWiki = pathJoin([path.relative(path.sep + notePath, path.sep + parsedPath["dir"]), parsedPathE["basen"]]);
-      pathMd = encodeURI(pathWiki);
+      pathMd = encodeURI(pathJoin([path.relative(path.sep + notePath, path.sep + parsedPath["dir"]), parsedPathE["basen"]]));
+      pathWiki = useMarkdownLinks ? pathMd : parsedPathE["basen"];
       break;
     case "fullDirPath":
       pathWiki = fileName.replace(/\\/g, "/");

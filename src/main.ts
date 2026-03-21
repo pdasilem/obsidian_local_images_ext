@@ -473,7 +473,7 @@ export default class LocalImagesPlugin extends Plugin {
       }
 
       let newpath = pathJoin([mdir, cFileName(path.basename(el.link))])
-      let newlink: Array<string> = await getRDir(note, this.settings, newpath)
+      let newlink: Array<string> = await getRDir(note, this.settings, newpath, undefined, useMdLinks)
       let newBinData: ArrayBuffer | null = null
       let newMD5: string | null = null
       const oldBinData = await readFromDiskB(pathJoin([this.app.vault.adapter.basePath, oldpath]), 5000)
@@ -504,7 +504,7 @@ export default class LocalImagesPlugin extends Plugin {
             this.settings
           )
           newpath = chosenPath.fileName
-          newlink = await getRDir(note, this.settings, newpath)
+          newlink = await getRDir(note, this.settings, newpath, undefined, useMdLinks)
         }
       } else {
         const chosenPath = await chooseAttachmentPath(
@@ -517,7 +517,7 @@ export default class LocalImagesPlugin extends Plugin {
           this.settings
         )
         newpath = chosenPath.fileName
-        newlink = await getRDir(note, this.settings, newpath)
+        newlink = await getRDir(note, this.settings, newpath, undefined, useMdLinks)
       }
 
       if (await this.app.vault.adapter.exists(newpath)) {
@@ -537,7 +537,7 @@ export default class LocalImagesPlugin extends Plugin {
             inc++
           }
 
-          newlink = await getRDir(note, this.settings, newpath)
+          newlink = await getRDir(note, this.settings, newpath, undefined, useMdLinks)
           await this.app.vault.adapter.rename(oldpath, newpath)
         }
       } else {

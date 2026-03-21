@@ -1,3 +1,6 @@
+0.17.2
+Fix: Relative-to-note path writing now produces correct wikilinks for localized attachments.
+
 0.17.1
 Fix: New pasted attachments are detected more reliably with a larger creation time window.
 Add: Localize attachments commands now also apply move, rename and compression settings to local note attachments.
