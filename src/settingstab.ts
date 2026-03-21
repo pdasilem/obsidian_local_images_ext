@@ -572,10 +572,11 @@ export default class SettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName("Oversized media subfolder")
-            .setDesc("Relative subfolder inside the media folder for files exceeding the upper size limit.")
-            .setClass("media_folder_set oversize_folder_set")
+            .setDesc("Subfolder inside the media folder for files exceeding the upper size limit. Example: /big or big/images")
+            .setClass("oversize_folder_set")
             .addText((text) =>
                 text
+                    .setPlaceholder("/big")
                     .setValue(this.plugin.settings.oversizeMediaSubdir)
                     .onChange(async (value) => {
 

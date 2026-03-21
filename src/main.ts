@@ -1160,6 +1160,9 @@ export default class LocalImagesPlugin extends Plugin {
 
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData())
+    if (!this.settings.oversizeMediaSubdir || this.settings.oversizeMediaSubdir === "_oversized") {
+      this.settings.oversizeMediaSubdir = "/big"
+    }
     if (!this.settings.newAttachmentNaming) {
       this.settings.newAttachmentNaming = this.settings.useMD5ForNewAtt ? "md5" : "originalName"
     }

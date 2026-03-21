@@ -113,7 +113,7 @@ export const DEFAULT_SETTINGS: ISettings = {
   includeps: "md|canvas",
   includepattern: "(?<md>.*\\.md)|(?<canvas>.*\\.canvas)",
   mediaRootDir: "_resources/${notename}",
-  oversizeMediaSubdir: "_oversized",
+  oversizeMediaSubdir: "/big",
   disAddCom: false,
   useMD5ForNewAtt: true,
   newAttachmentNaming: "md5",
