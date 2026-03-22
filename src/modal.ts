@@ -87,7 +87,7 @@ export class ModalW2 extends Modal {
 
 export class BulkProgressModal extends Modal {
 	private statusLines: string[] = [];
-	private detailsLine = "";
+	private detailLines: string[] = [];
 	private statusEl: HTMLDivElement | null = null;
 	private detailsEl: HTMLDivElement | null = null;
 	private closeButtonEl: HTMLButtonElement | null = null;
@@ -98,15 +98,15 @@ export class BulkProgressModal extends Modal {
 		super(app);
 	}
 
-	setProgress(lines: string[], details = "") {
+	setProgress(lines: string[], details: string[] = []) {
 		this.statusLines = lines;
-		this.detailsLine = details;
+		this.detailLines = details;
 		this.render();
 	}
 
-	setFinished(lines: string[], details = "") {
+	setFinished(lines: string[], details: string[] = []) {
 		this.statusLines = lines;
-		this.detailsLine = details;
+		this.detailLines = details;
 		this.render();
 		if (this.cancelButtonEl) {
 			this.cancelButtonEl.disabled = true;
@@ -164,8 +164,8 @@ export class BulkProgressModal extends Modal {
 			this.statusEl.createDiv({ text: line });
 		}
 
-		if (this.detailsLine.length > 0) {
-			this.detailsEl.createDiv({ text: this.detailsLine });
+		for (const line of this.detailLines) {
+			this.detailsEl.createDiv({ text: line });
 		}
 	}
 

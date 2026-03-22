@@ -1,3 +1,7 @@
+0.21.1
+Fix: Bulk worker progress lines are now rendered as separate lines in the modal instead of collapsing into one block of text.
+Fix: When a bulk worker finishes and notes still remain, the scheduler now starts the next worker automatically to continue the queue up to the configured worker limit.
+
 0.21.0
 Add: Bulk processing now uses a bounded multi-worker scheduler with soft timeout handoff, so a slow note no longer blocks the entire run.
 Add: Bulk progress modal now shows per-worker phases and current media URL/source details while processing.

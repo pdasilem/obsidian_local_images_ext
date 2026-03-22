@@ -128,7 +128,7 @@ export default class LocalImagesPlugin extends Plugin {
         `Worker ${worker.id}: ${worker.currentFilePath || "(idle)"}`,
         `Phase: ${worker.phase || "Working"}`,
         ...(worker.details ? [`Details: ${worker.details}`] : []),
-        ...(worker.retireAfterCurrent ? ["State: retiring after current note"] : []),
+        "",
       ])
 
     run.progressModal.setProgress(
@@ -142,7 +142,7 @@ export default class LocalImagesPlugin extends Plugin {
         `Timed out handovers: ${run.timedOutHandovers}`,
         `Active workers: ${run.activeWorkers.size}`,
       ],
-      workerLines.join("\n")
+      workerLines
     )
   }
 
@@ -850,10 +850,10 @@ export default class LocalImagesPlugin extends Plugin {
 
     const cancelled = run.cancelRequested
     const details = run.errorFiles.length > 0
-      ? `Failed notes: ${run.errorFiles.slice(0, 5).join(", ")}${run.errorFiles.length > 5 ? " ..." : ""}`
+      ? [`Failed notes: ${run.errorFiles.slice(0, 5).join(", ")}${run.errorFiles.length > 5 ? " ..." : ""}`]
       : cancelled
-        ? "Stopped by user."
-        : "Completed without errors."
+        ? ["Stopped by user."]
+        : ["Completed without errors."]
 
     const resultLines = [
       cancelled ? "Bulk processing cancelled" : "Bulk processing finished",
@@ -965,6 +965,11 @@ export default class LocalImagesPlugin extends Plugin {
     this.renderBulkProgress(run)
     if (run.activeWorkers.size === 0 && (run.cancelRequested || run.nextIndex >= run.files.length)) {
       run.resolveCompletion?.()
+      return
+    }
+
+    if (!run.cancelRequested && run.nextIndex < run.files.length && run.activeWorkers.size < run.maxWorkers) {
+      this.spawnBulkWorker(run)
     }
   }
 
