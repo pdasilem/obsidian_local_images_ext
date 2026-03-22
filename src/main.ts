@@ -15,10 +15,8 @@ import {
   getMDir,
   getRDir,
   FrontMatterParser,
-  chooseAttachmentPath,
   getTargetMediaDir,
-  getAttachmentNamingStrategy,
-  matchesNoteNameCounterPattern,
+  buildAttachmentNamingDecision,
 } from "./contentProcessor"
 
 import {
@@ -51,10 +49,13 @@ import path from "path"
 import { ModalW1 } from "./modal"
 const fs = require('fs').promises;
 
-
-
-
-
+interface LocalAttachmentTargetState {
+  targetDir: string
+  desiredPath: string
+  newBinData: ArrayBuffer | null
+  sourceMD5: string
+  useFilesystemMove: boolean
+}
 
 //import { count, log } from "console"
 
@@ -95,6 +96,14 @@ export default class LocalImagesPlugin extends Plugin {
     }
   }
 
+  private async getTargetFileMd5(vaultPath: string, useFilesystemMove: boolean): Promise<string> {
+    if (useFilesystemMove) {
+      return md5Sig(await fs.readFile(pathJoin([this.app.vault.adapter.basePath, vaultPath])))
+    }
+
+    return md5Sig(await this.app.vault.adapter.readBinary(vaultPath))
+  }
+
   private async moveToFilesystemTarget(
     oldVaultPath: string,
     desiredVaultPath: string,
@@ -132,10 +141,139 @@ export default class LocalImagesPlugin extends Plugin {
     }
 
     const normalizedTargetDir = trimAny(targetDir.replace(/\\/g, "/"), ["/"])
-    const normalizedDesiredPath = desiredPath.replace(/\\/g, "/")
     const normalizedOversizeSuffix = trimAny(oversizeSubdir.replace(/\\/g, "/"), ["/"])
+    const normalizedDesiredDir = trimAny(path.dirname(desiredPath).replace(/\\/g, "/"), ["/"])
 
-    return normalizedTargetDir.endsWith(normalizedOversizeSuffix) && normalizedDesiredPath.includes(`/${normalizedOversizeSuffix}/`)
+    return normalizedTargetDir.endsWith(normalizedOversizeSuffix) && normalizedDesiredDir === normalizedTargetDir
+  }
+
+  private async buildLocalAttachmentTargetState(
+    note: TFile,
+    link: string,
+    oldpath: string,
+    oldBinData: ArrayBuffer,
+    defaultdir: boolean
+  ): Promise<LocalAttachmentTargetState> {
+    const fileExt = await getFileExt(oldBinData, oldpath)
+    let targetDir = await getTargetMediaDir(this.app, note, this.settings, oldBinData.byteLength, defaultdir)
+    await this.ensureFolderExists(targetDir)
+
+    let desiredPath = pathJoin([targetDir, cFileName(path.basename(link))])
+    let newBinData: ArrayBuffer | null = null
+    let sourceMD5 = md5Sig(oldBinData)
+
+    if (this.settings.PngToJpegLocal && fileExt == "png") {
+      let compType = "image/jpg"
+      let compExt = ".jpg"
+
+      if (this.settings.ImgCompressionType == "image/webp") {
+        compType = "image/webp"
+        compExt = ".webp"
+      }
+
+      const blob = new Blob([new Uint8Array(oldBinData)])
+      newBinData = await blobToJpegArrayBuffer(blob, this.settings.JpegQuality * 0.01, compType)
+      sourceMD5 = md5Sig(newBinData)
+
+      if (newBinData != null) {
+        targetDir = await getTargetMediaDir(this.app, note, this.settings, newBinData.byteLength, defaultdir)
+        await this.ensureFolderExists(targetDir)
+        const namingDecision = await buildAttachmentNamingDecision(
+          this.app.vault.adapter,
+          targetDir,
+          note,
+          link,
+          compExt.replace(".", ""),
+          newBinData,
+          this.settings,
+          oldpath
+        )
+        desiredPath = namingDecision.alreadyMatchesCurrentPath
+          ? pathJoin([targetDir, cFileName(`${path.parse(oldpath).name}${compExt}`)])
+          : namingDecision.fileName
+      }
+    } else {
+      const namingDecision = await buildAttachmentNamingDecision(
+        this.app.vault.adapter,
+        targetDir,
+        note,
+        link,
+        fileExt,
+        oldBinData,
+        this.settings,
+        oldpath
+      )
+      desiredPath = namingDecision.alreadyMatchesCurrentPath
+        ? pathJoin([targetDir, cFileName(path.basename(oldpath))])
+        : namingDecision.fileName
+    }
+
+    const useFilesystemMove = this.isOversizedFilesystemMoveEnabled(targetDir, desiredPath)
+
+    return {
+      targetDir,
+      desiredPath,
+      newBinData,
+      sourceMD5,
+      useFilesystemMove,
+    }
+  }
+
+  private async applyLocalAttachmentTargetState(
+    oldpath: string,
+    targetState: LocalAttachmentTargetState
+  ): Promise<string | null> {
+    const { targetDir, desiredPath, newBinData, sourceMD5, useFilesystemMove } = targetState
+
+    if (oldpath === desiredPath) {
+      return desiredPath
+    }
+
+    const targetAlreadyExists = useFilesystemMove
+      ? await this.pathExistsOnDisk(pathJoin([this.app.vault.adapter.basePath, desiredPath]))
+      : await this.app.vault.adapter.exists(desiredPath)
+
+    if (targetAlreadyExists) {
+      const existingTargetMD5 = await this.getTargetFileMd5(desiredPath, useFilesystemMove)
+
+      if (sourceMD5 === existingTargetMD5) {
+        await this.app.vault.adapter.remove(oldpath)
+        return desiredPath
+      }
+
+      let finalPath = desiredPath
+      let inc = 1
+      while (
+        useFilesystemMove
+          ? await this.pathExistsOnDisk(pathJoin([this.app.vault.adapter.basePath, finalPath]))
+          : await this.app.vault.adapter.exists(finalPath)
+      ) {
+        finalPath = pathJoin([targetDir, `(${inc}) ` + cFileName(path.basename(desiredPath))])
+        inc++
+      }
+
+      if (useFilesystemMove) {
+        await this.moveToFilesystemTarget(oldpath, finalPath, newBinData)
+      } else if (newBinData != null) {
+        await this.app.vault.adapter.writeBinary(finalPath, newBinData)
+        await this.app.vault.adapter.remove(oldpath)
+      } else {
+        await this.app.vault.adapter.rename(oldpath, finalPath)
+      }
+
+      return finalPath
+    }
+
+    if (useFilesystemMove) {
+      await this.moveToFilesystemTarget(oldpath, desiredPath, newBinData)
+    } else if (newBinData != null) {
+      await this.app.vault.adapter.writeBinary(desiredPath, newBinData)
+      await this.app.vault.adapter.remove(oldpath)
+    } else {
+      await this.app.vault.adapter.rename(oldpath, desiredPath)
+    }
+
+    return desiredPath
   }
 
 
@@ -521,124 +659,23 @@ export default class LocalImagesPlugin extends Plugin {
       }
 
       const oldBinData = await this.app.vault.adapter.readBinary(oldpath)
-      const oldMD5 = md5Sig(oldBinData)
-      const fileExt = await getFileExt(oldBinData, oldpath)
-      const attachmentNamingStrategy = getAttachmentNamingStrategy(this.settings)
-      const shouldPreserveCurrentCounterName =
-        attachmentNamingStrategy === "noteNameCounter" &&
-        matchesNoteNameCounterPattern(note, oldpath)
-      let targetDir = await getTargetMediaDir(this.app, note, this.settings, oldBinData.byteLength, defaultdir)
-      await this.ensureFolderExists(targetDir)
+      const targetState = await this.buildLocalAttachmentTargetState(
+        note,
+        el.link,
+        oldpath,
+        oldBinData,
+        defaultdir
+      )
 
-      let newpath = pathJoin([targetDir, cFileName(path.basename(el.link))])
-      let newlink: Array<string> = await getRDir(note, this.settings, newpath, undefined, useMdLinks)
-      let newBinData: ArrayBuffer | null = null
-      let newMD5: string | null = null
-
-      if (this.settings.PngToJpegLocal && fileExt == "png") {
-        let compType = "image/jpg"
-        let compExt = ".jpg"
-
-        if (this.settings.ImgCompressionType == "image/webp") {
-          compType = "image/webp"
-          compExt = ".webp"
-        }
-
-        const blob = new Blob([new Uint8Array(await this.app.vault.adapter.readBinary(oldpath))])
-        newBinData = await blobToJpegArrayBuffer(blob, this.settings.JpegQuality * 0.01, compType)
-        newMD5 = md5Sig(newBinData)
-
-        if (newBinData != null) {
-          targetDir = await getTargetMediaDir(this.app, note, this.settings, newBinData.byteLength, defaultdir)
-          await this.ensureFolderExists(targetDir)
-          if (shouldPreserveCurrentCounterName) {
-            newpath = pathJoin([targetDir, cFileName(`${path.parse(oldpath).name}${compExt}`)])
-          } else {
-            const chosenPath = await chooseAttachmentPath(
-              this.app.vault.adapter,
-              targetDir,
-              note,
-              el.link,
-              compExt.replace(".", ""),
-              newBinData,
-              this.settings
-            )
-            newpath = chosenPath.fileName
-          }
-          newlink = await getRDir(note, this.settings, newpath, undefined, useMdLinks)
-        }
-      } else {
-        if (shouldPreserveCurrentCounterName) {
-          newpath = pathJoin([targetDir, cFileName(path.basename(oldpath))])
-        } else {
-          const chosenPath = await chooseAttachmentPath(
-            this.app.vault.adapter,
-            targetDir,
-            note,
-            el.link,
-            fileExt,
-            oldBinData,
-            this.settings
-          )
-          newpath = chosenPath.fileName
-        }
-        newlink = await getRDir(note, this.settings, newpath, undefined, useMdLinks)
+      let finalPath: string | null = null
+      try {
+        finalPath = await this.applyLocalAttachmentTargetState(oldpath, targetState)
+      } catch (error) {
+        logError(error)
+        continue
       }
 
-      const desiredPath = newpath
-      const sourceMD5 = newMD5 ?? oldMD5
-
-      const useFilesystemMove = this.isOversizedFilesystemMoveEnabled(targetDir, desiredPath)
-      const targetAlreadyExists = useFilesystemMove
-        ? await this.pathExistsOnDisk(pathJoin([this.app.vault.adapter.basePath, desiredPath]))
-        : await this.app.vault.adapter.exists(desiredPath)
-
-      if (oldpath != desiredPath && targetAlreadyExists) {
-        const existingTargetMD5 = useFilesystemMove
-          ? md5Sig(await fs.readFile(pathJoin([this.app.vault.adapter.basePath, desiredPath])))
-          : md5Sig(await this.app.vault.adapter.readBinary(desiredPath))
-
-        if (sourceMD5 === existingTargetMD5) {
-          await this.app.vault.adapter.remove(oldpath)
-        } else {
-          let inc = 1
-          while (
-            useFilesystemMove
-              ? await this.pathExistsOnDisk(pathJoin([this.app.vault.adapter.basePath, newpath]))
-              : await this.app.vault.adapter.exists(newpath)
-          ) {
-            newpath = pathJoin([targetDir, `(${inc}) ` + cFileName(path.basename(desiredPath))])
-            inc++
-          }
-
-          newlink = await getRDir(note, this.settings, newpath, undefined, useMdLinks)
-          if (useFilesystemMove) {
-            await this.moveToFilesystemTarget(oldpath, newpath, newBinData)
-          } else {
-            if (newBinData != null) {
-              await this.app.vault.adapter.writeBinary(newpath, newBinData)
-              await this.app.vault.adapter.remove(oldpath)
-            } else {
-              await this.app.vault.adapter.rename(oldpath, newpath)
-            }
-          }
-        }
-      } else if (oldpath != desiredPath) {
-        try {
-          if (useFilesystemMove) {
-            await this.moveToFilesystemTarget(oldpath, desiredPath, newBinData)
-          } else {
-            if (newBinData != null) {
-              await this.app.vault.adapter.writeBinary(desiredPath, newBinData)
-              await this.app.vault.adapter.remove(oldpath)
-            } else {
-              await this.app.vault.adapter.rename(oldpath, desiredPath)
-            }
-          }
-        } catch (error) {
-          logError(error)
-        }
-      }
+      const newlink: Array<string> = await getRDir(note, this.settings, finalPath, undefined, useMdLinks)
 
       let addName = ""
       if (this.settings.addNameOfFile) {
