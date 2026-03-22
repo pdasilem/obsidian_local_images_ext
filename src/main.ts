@@ -68,6 +68,10 @@ export default class LocalImagesPlugin extends Plugin {
   noteModified: Array<TFile> = []
   newfCreatedByDownloader: Array<string> = []
 
+  private cloneSettingsSnapshot(): ISettings {
+    return { ...this.settings }
+  }
+
   private getFilesInFolderTree(folder: TFolder | null): TFile[] {
     if (!folder) {
       return []
@@ -130,12 +134,12 @@ export default class LocalImagesPlugin extends Plugin {
     }
   }
 
-  private isOversizedFilesystemMoveEnabled(targetDir: string, desiredPath: string): boolean {
-    if (!this.settings.oversizeMediaSubdirIsSymlink) {
+  private isOversizedFilesystemMoveEnabled(targetDir: string, desiredPath: string, settingsSnapshot: ISettings): boolean {
+    if (!settingsSnapshot.oversizeMediaSubdirIsSymlink) {
       return false
     }
 
-    const oversizeSubdir = trimAny(this.settings.oversizeMediaSubdir, ["/", "\\", " "])
+    const oversizeSubdir = trimAny(settingsSnapshot.oversizeMediaSubdir, ["/", "\\", " "])
     if (!oversizeSubdir.length) {
       return false
     }
@@ -152,31 +156,32 @@ export default class LocalImagesPlugin extends Plugin {
     link: string,
     oldpath: string,
     oldBinData: ArrayBuffer,
-    defaultdir: boolean
+    defaultdir: boolean,
+    settingsSnapshot: ISettings
   ): Promise<LocalAttachmentTargetState> {
     const fileExt = await getFileExt(oldBinData, oldpath)
-    let targetDir = await getTargetMediaDir(this.app, note, this.settings, oldBinData.byteLength, defaultdir)
+    let targetDir = await getTargetMediaDir(this.app, note, settingsSnapshot, oldBinData.byteLength, defaultdir)
     await this.ensureFolderExists(targetDir)
 
     let desiredPath = pathJoin([targetDir, cFileName(path.basename(link))])
     let newBinData: ArrayBuffer | null = null
     let sourceMD5 = md5Sig(oldBinData)
 
-    if (this.settings.PngToJpegLocal && fileExt == "png") {
+    if (settingsSnapshot.PngToJpegLocal && fileExt == "png") {
       let compType = "image/jpg"
       let compExt = ".jpg"
 
-      if (this.settings.ImgCompressionType == "image/webp") {
+      if (settingsSnapshot.ImgCompressionType == "image/webp") {
         compType = "image/webp"
         compExt = ".webp"
       }
 
       const blob = new Blob([new Uint8Array(oldBinData)])
-      newBinData = await blobToJpegArrayBuffer(blob, this.settings.JpegQuality * 0.01, compType)
+      newBinData = await blobToJpegArrayBuffer(blob, settingsSnapshot.JpegQuality * 0.01, compType)
       sourceMD5 = md5Sig(newBinData)
 
       if (newBinData != null) {
-        targetDir = await getTargetMediaDir(this.app, note, this.settings, newBinData.byteLength, defaultdir)
+        targetDir = await getTargetMediaDir(this.app, note, settingsSnapshot, newBinData.byteLength, defaultdir)
         await this.ensureFolderExists(targetDir)
         const namingDecision = await buildAttachmentNamingDecision(
           this.app.vault.adapter,
@@ -185,7 +190,7 @@ export default class LocalImagesPlugin extends Plugin {
           link,
           compExt.replace(".", ""),
           newBinData,
-          this.settings,
+          settingsSnapshot,
           oldpath
         )
         desiredPath = namingDecision.alreadyMatchesCurrentPath
@@ -200,7 +205,7 @@ export default class LocalImagesPlugin extends Plugin {
         link,
         fileExt,
         oldBinData,
-        this.settings,
+        settingsSnapshot,
         oldpath
       )
       desiredPath = namingDecision.alreadyMatchesCurrentPath
@@ -208,7 +213,7 @@ export default class LocalImagesPlugin extends Plugin {
         : namingDecision.fileName
     }
 
-    const useFilesystemMove = this.isOversizedFilesystemMoveEnabled(targetDir, desiredPath)
+    const useFilesystemMove = this.isOversizedFilesystemMoveEnabled(targetDir, desiredPath, settingsSnapshot)
 
     return {
       targetDir,
@@ -444,8 +449,9 @@ export default class LocalImagesPlugin extends Plugin {
           .replaceAll("[" + oldRootdir, "[" + newRootDir)
         this.app.vault.modify(file, content)
 
-        if (this.settings.newAttachmentNaming === "noteNameCounter") {
-          await this.processLocalAttachmentsForNote(file, false, false, false)
+        const settingsSnapshot = this.cloneSettingsSnapshot()
+        if (settingsSnapshot.newAttachmentNaming === "noteNameCounter") {
+          await this.processLocalAttachmentsForNote(file, false, false, false, settingsSnapshot)
         }
 
       }
@@ -529,7 +535,11 @@ export default class LocalImagesPlugin extends Plugin {
   }
 
 
-  private async processPage(file: TFile, defaultdir: boolean = false): Promise<any> {
+  private async processPage(
+    file: TFile,
+    defaultdir: boolean = false,
+    settingsSnapshot: ISettings = this.cloneSettingsSnapshot()
+  ): Promise<any> {
     
  
     if (file == null ) {return null}
@@ -543,7 +553,7 @@ export default class LocalImagesPlugin extends Plugin {
       MD_SEARCH_PATTERN,
       imageTagProcessor(this,
         file,
-        this.settings,
+        settingsSnapshot,
         defaultdir
       )
     )
@@ -560,7 +570,7 @@ export default class LocalImagesPlugin extends Plugin {
         this.newfCreatedByDownloader.push(element)
       })
 
-      showBalloon(`Attachments for "${file.path}" were processed.`, this.settings.showNotifications)
+      showBalloon(`Attachments for "${file.path}" were processed.`, settingsSnapshot.showNotifications)
 
     }
 
@@ -573,11 +583,11 @@ export default class LocalImagesPlugin extends Plugin {
         this.newfCreatedByDownloader.push(element)
       })
 
-      showBalloon(`WARNING!\r\nAttachments for "${file.path}" were processed, but some attachments were not downloaded/replaced...`, this.settings.showNotifications)
+      showBalloon(`WARNING!\r\nAttachments for "${file.path}" were processed, but some attachments were not downloaded/replaced...`, settingsSnapshot.showNotifications)
     }
     else {
-      if (this.settings.showNotifications) {
-        showBalloon(`Page "${file.path}" has been processed, but nothing was changed.`, this.settings.showNotifications)
+      if (settingsSnapshot.showNotifications) {
+        showBalloon(`Page "${file.path}" has been processed, but nothing was changed.`, settingsSnapshot.showNotifications)
       }
     }
   }
@@ -611,13 +621,14 @@ export default class LocalImagesPlugin extends Plugin {
     note: TFile,
     defaultdir: boolean = false,
     onlyNew: boolean = false,
-    notify: boolean = true
+    notify: boolean = true,
+    settingsSnapshot: ISettings = this.cloneSettingsSnapshot()
   ): Promise<number> {
     const metaCache = this.app.metadataCache.getFileCache(note)
     let filedata = await this.app.vault.cachedRead(note)
     let itemcount = 0
     const useMdLinks = this.app.vault.getConfig("useMarkdownLinks")
-    const obsmdir = await getMDir(this.app, note, this.settings, true)
+    const obsmdir = await getMDir(this.app, note, settingsSnapshot, true)
     const embeds = metaCache?.embeds
 
     if (!embeds || embeds.length === 0) {
@@ -625,10 +636,10 @@ export default class LocalImagesPlugin extends Plugin {
     }
 
     if (obsmdir != "" && !await this.app.vault.adapter.exists(obsmdir)) {
-      if (!this.settings.DoNotCreateObsFolder) {
+      if (!settingsSnapshot.DoNotCreateObsFolder) {
         await this.ensureFolderExists(obsmdir)
         if (notify) {
-          showBalloon("You obsidian media folder set to '" + obsmdir + "', and has been created by the plugin. Please, try again. ", this.settings.showNotifications)
+          showBalloon("You obsidian media folder set to '" + obsmdir + "', and has been created by the plugin. Please, try again. ", settingsSnapshot.showNotifications)
         }
       }
       return 0
@@ -664,7 +675,8 @@ export default class LocalImagesPlugin extends Plugin {
         el.link,
         oldpath,
         oldBinData,
-        defaultdir
+        defaultdir,
+        settingsSnapshot
       )
 
       let finalPath: string | null = null
@@ -675,10 +687,10 @@ export default class LocalImagesPlugin extends Plugin {
         continue
       }
 
-      const newlink: Array<string> = await getRDir(note, this.settings, finalPath, undefined, useMdLinks)
+      const newlink: Array<string> = await getRDir(note, settingsSnapshot, finalPath, undefined, useMdLinks)
 
       let addName = ""
-      if (this.settings.addNameOfFile) {
+      if (settingsSnapshot.addNameOfFile) {
         if (useMdLinks) {
           addName = `[Open: ${path.basename(el.link)}](${newlink[1]})\r\n`
         } else {
@@ -698,7 +710,7 @@ export default class LocalImagesPlugin extends Plugin {
     if (itemcount > 0) {
       await this.app.vault.modify(note, filedata)
       if (notify) {
-        showBalloon(itemcount + " attachments for note " + note.path + " were processed.", this.settings.showNotifications)
+        showBalloon(itemcount + " attachments for note " + note.path + " were processed.", settingsSnapshot.showNotifications)
       }
     }
 
@@ -711,8 +723,9 @@ export default class LocalImagesPlugin extends Plugin {
     logError("processActivePage")
     try {
       const activeFile = this.getCurrentNote()
-      await this.processPage(activeFile, defaultdir)
-      await this.processLocalAttachmentsForNote(activeFile, defaultdir, false, true)
+      const settingsSnapshot = this.cloneSettingsSnapshot()
+      await this.processPage(activeFile, defaultdir, settingsSnapshot)
+      await this.processLocalAttachmentsForNote(activeFile, defaultdir, false, true, settingsSnapshot)
     } catch (e) {
       showBalloon(`Please select a note or click inside selected note in canvas.`, this.settings.showNotifications)
       return
@@ -720,11 +733,12 @@ export default class LocalImagesPlugin extends Plugin {
   }
 
   processAllPages = async () => {
+    const settingsSnapshot = this.cloneSettingsSnapshot()
     const files = this.app.vault.getMarkdownFiles().filter(file => this.ExemplaryOfMD(file.path))
     const pagesCount = files.length
     let processedCount = 0
 
-    const notice = this.settings.showNotifications
+    const notice = settingsSnapshot.showNotifications
 
       ? new Notice(
         APP_TITLE + `\nStart processing. Total ${pagesCount} pages. `,
@@ -740,8 +754,8 @@ export default class LocalImagesPlugin extends Plugin {
           APP_TITLE + `\nProcessing "${file.path}"\nTotal: ${pagesCount}\nProcessed: ${processedCount}\nRemaining: ${remainingBefore}`
         )
       }
-      await this.processPage(file, false)
-      await this.processLocalAttachmentsForNote(file, false, false, false)
+      await this.processPage(file, false, settingsSnapshot)
+      await this.processLocalAttachmentsForNote(file, false, false, false, settingsSnapshot)
       processedCount = index + 1
     }
     if (notice) {
@@ -1154,6 +1168,7 @@ export default class LocalImagesPlugin extends Plugin {
       window.clearInterval(this.newfProcInt)
       this.newfProcInt = 0
       for (let note of this.noteModified) {
+        const settingsSnapshot = this.cloneSettingsSnapshot()
         let filedata = await this.app.vault.cachedRead(note)
         
 
@@ -1166,10 +1181,10 @@ export default class LocalImagesPlugin extends Plugin {
         }
 
         if (pr) {
-          await this.processPage(note, false)
+          await this.processPage(note, false, settingsSnapshot)
         }
-        await this.processLocalAttachmentsForNote(note, false, true, true)
-        await this.processLocalAttachmentsForNote(note, false, false, false)
+        await this.processLocalAttachmentsForNote(note, false, true, true, settingsSnapshot)
+        await this.processLocalAttachmentsForNote(note, false, false, false, settingsSnapshot)
       }
     } catch (e) {
       logError(e)
@@ -1240,7 +1255,8 @@ export default class LocalImagesPlugin extends Plugin {
   processModifiedQueue = async () => {
     const iteration = this.modifiedQueue.iterationQueue();
     for (const page of iteration) {
-      this.processPage(page, false);
+      const settingsSnapshot = this.cloneSettingsSnapshot()
+      this.processPage(page, false, settingsSnapshot);
     }
   };
 

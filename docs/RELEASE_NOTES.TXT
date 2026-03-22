@@ -1,3 +1,8 @@
+0.20.0
+Refactor: Extracted attachment naming core into a dedicated module shared by local attachment flow and external media flow.
+Fix: Any single processing flow now starts from a settings snapshot instead of reading live settings throughout the run.
+Test: Added naming-core tests to verify that fixed `md5` naming never falls back to note-name counter naming.
+
 0.19.0
 Refactor: Unified attachment processing around canonical naming and target-state layers for both local attachments and external media links.
 Fix: Local attachment links are rewritten only after successful file apply, preventing file/link desynchronization during rename and move operations.

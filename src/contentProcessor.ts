@@ -22,12 +22,16 @@ import {
   getFileExt,
   blobToJpegArrayBuffer
 } from "./utils";
-
 import {
-  AttachmentNamingStrategy,
-  ISettings,
-  SUPPORTED_OS
-} from "./config";
+  AttachmentNamingDecision,
+  buildAttachmentNamingDecision as buildAttachmentNamingDecisionCore,
+  getAttachmentNamingStrategy,
+  getNoteAttachmentBaseName,
+  matchesNoteNameCounterPattern,
+  isCurrentAttachmentPathValidForNamingStrategy as isCurrentAttachmentPathValidForNamingStrategyCore,
+} from "./attachmentNamingCore";
+
+import { ISettings, SUPPORTED_OS } from "./config";
 
 
 import AsyncLock from "async-lock";
@@ -36,8 +40,6 @@ import moment from "moment";
 type LocalImagesPluginLike = Plugin & {
   ensureFolderExists(folderPath: string): Promise<void>;
 };
-
-const NOTE_ATTACHMENT_NAME_MAX_LENGTH = 20;
 
 interface ExternalMediaTargetState {
   fileData: ArrayBuffer;
@@ -395,113 +397,6 @@ export async function getTargetMediaDir(app: App,
 
 
 
-export function getAttachmentNamingStrategy(settings: ISettings): AttachmentNamingStrategy {
-  return settings.newAttachmentNaming ?? "md5";
-}
-
-export interface AttachmentNamingDecision {
-  strategy: AttachmentNamingStrategy;
-  fileName: string;
-  needWrite: boolean;
-  alreadyMatchesCurrentPath: boolean;
-}
-
-export function getNoteAttachmentBaseName(noteFile: TFile): string {
-  const truncatedName = noteFile.basename.slice(0, NOTE_ATTACHMENT_NAME_MAX_LENGTH);
-  const normalizedName = truncatedName.replace(/ /g, "_");
-  const safeName = cFileName(normalizedName);
-
-  return safeName.length > 0 ? safeName : "attachment";
-}
-
-export function matchesNoteNameCounterPattern(noteFile: TFile, filePath: string): boolean {
-  const noteBaseName = getNoteAttachmentBaseName(noteFile);
-  const fileBaseName = path.parse(filePath).name;
-  const counterPattern = new RegExp(`^${noteBaseName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-\\d+$`);
-
-  return counterPattern.test(fileBaseName);
-}
-
-function getOriginalAttachmentBaseName(link: string, noteFile: TFile): string {
-  try {
-    const parsedUrl = new URL(link);
-    const rawName = path.parse(decodeURI(parsedUrl.pathname)).name;
-    const safeName = cFileName(rawName);
-
-    if (safeName.length > 0) {
-      return safeName;
-    }
-  } catch (error) {
-    logError(error);
-  }
-
-  return getNoteAttachmentBaseName(noteFile);
-}
-
-async function getNextNoteAttachmentCounter(
-  adapter: DataAdapter,
-  dir: string,
-  baseName: string
-): Promise<number> {
-  const listed = await adapter.list(dir);
-  const counterPattern = new RegExp(`^${baseName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-([0-9]+)(\\..+)?$`);
-  let maxCounter = 0;
-
-  for (const filePath of listed.files) {
-    const fileName = path.basename(filePath);
-    const match = fileName.match(counterPattern);
-    if (!match) {
-      continue;
-    }
-
-    const currentCounter = Number(match[1]);
-    if (!isNaN(currentCounter) && currentCounter > maxCounter) {
-      maxCounter = currentCounter;
-    }
-  }
-
-  return maxCounter + 1;
-}
-
-async function getNextOriginalNamePath(
-  adapter: DataAdapter,
-  dir: string,
-  baseName: string,
-  fileExt: string
-): Promise<string> {
-  let candidate = pathJoin([dir, cFileName(`${baseName}.${fileExt}`)]);
-  if (!await adapter.exists(candidate, false)) {
-    return candidate;
-  }
-
-  let inc = 1;
-  while (await adapter.exists(candidate, false)) {
-    candidate = pathJoin([dir, cFileName(`(${inc}) ${baseName}.${fileExt}`)]);
-    inc++;
-  }
-
-  return candidate;
-}
-
-function getExpectedMd5Path(dir: string, fileExt: string, contentData: ArrayBuffer | Uint8Array): string {
-  const baseName = md5Sig(contentData);
-  return pathJoin([dir, cFileName(`${baseName}.${fileExt}`)]);
-}
-
-function getExpectedOriginalNamePath(dir: string, link: string, fileExt: string, noteFile: TFile): string {
-  const originalBaseName = getOriginalAttachmentBaseName(link, noteFile);
-  return pathJoin([dir, cFileName(`${originalBaseName}.${fileExt}`)]);
-}
-
-function matchesOriginalNamePattern(
-  noteFile: TFile,
-  filePath: string,
-  link: string,
-  fileExt: string
-): boolean {
-  return path.basename(filePath) === path.basename(getExpectedOriginalNamePath(path.dirname(filePath), link, fileExt, noteFile));
-}
-
 export function isCurrentAttachmentPathValidForNamingStrategy(
   noteFile: TFile,
   currentFilePath: string,
@@ -511,17 +406,15 @@ export function isCurrentAttachmentPathValidForNamingStrategy(
   contentData: ArrayBuffer | Uint8Array,
   settings: ISettings
 ): boolean {
-  const strategy = getAttachmentNamingStrategy(settings);
-
-  if (strategy === "md5") {
-    return path.basename(currentFilePath) === path.basename(getExpectedMd5Path(dir, fileExt, contentData));
-  }
-
-  if (strategy === "originalName") {
-    return matchesOriginalNamePattern(noteFile, currentFilePath, link, fileExt);
-  }
-
-  return matchesNoteNameCounterPattern(noteFile, currentFilePath);
+  return isCurrentAttachmentPathValidForNamingStrategyCore(
+    noteFile.basename,
+    currentFilePath,
+    dir,
+    link,
+    fileExt,
+    contentData,
+    settings
+  );
 }
 
 export async function buildAttachmentNamingDecision(
@@ -534,67 +427,16 @@ export async function buildAttachmentNamingDecision(
   settings: ISettings,
   currentFilePath?: string
 ): Promise<AttachmentNamingDecision> {
-  const strategy = getAttachmentNamingStrategy(settings);
-  const alreadyMatchesCurrentPath = currentFilePath
-    ? isCurrentAttachmentPathValidForNamingStrategy(
-      noteFile,
-      currentFilePath,
-      dir,
-      link,
-      fileExt,
-      contentData,
-      settings
-    )
-    : false;
-
-  if (strategy === "md5") {
-    const suggestedName = getExpectedMd5Path(dir, fileExt, contentData);
-    if (await adapter.exists(suggestedName, false)) {
-      const fileData = await adapter.readBinary(suggestedName);
-      const existingFileMd5 = md5Sig(fileData);
-      const currentMd5 = md5Sig(contentData);
-      if (existingFileMd5 === currentMd5) {
-        return {
-          strategy,
-          fileName: suggestedName,
-          needWrite: false,
-          alreadyMatchesCurrentPath,
-        };
-      }
-
-      return {
-        strategy,
-        fileName: pathJoin([dir, cFileName(Math.random().toString(9).slice(2,) + `.${fileExt}`)]),
-        needWrite: true,
-        alreadyMatchesCurrentPath,
-      };
-    }
-
-    return {
-      strategy,
-      fileName: suggestedName,
-      needWrite: true,
-      alreadyMatchesCurrentPath,
-    };
-  }
-
-  if (strategy === "noteNameCounter") {
-    const noteBaseName = getNoteAttachmentBaseName(noteFile);
-    const counter = await getNextNoteAttachmentCounter(adapter, dir, noteBaseName);
-    return {
-      strategy,
-      fileName: pathJoin([dir, cFileName(`${noteBaseName}-${counter}.${fileExt}`)]),
-      needWrite: true,
-      alreadyMatchesCurrentPath,
-    };
-  }
-
-  return {
-    strategy,
-    fileName: await getNextOriginalNamePath(adapter, dir, getOriginalAttachmentBaseName(link, noteFile), fileExt),
-    needWrite: true,
-    alreadyMatchesCurrentPath,
-  };
+  return buildAttachmentNamingDecisionCore(
+    adapter as unknown as import("./attachmentNamingCore").MinimalBinaryAdapter,
+    dir,
+    noteFile.basename,
+    link,
+    fileExt,
+    contentData,
+    settings,
+    currentFilePath
+  );
 }
 
 export async function FrontMatterParser(app: Plugin, noteFile: TFile, SearchPattern: Array<RegExp>) {
