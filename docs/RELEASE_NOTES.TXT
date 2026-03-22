@@ -1,3 +1,7 @@
+0.21.2
+Fix: Bulk processing now pauses realtime automation while running and clears queued realtime work on start and finish, preventing duplicate post-bulk auto-processing.
+Fix: Bulk worker timeout escalation now tracks target worker demand, so replacement workers are spawned deterministically when slots free up.
+
 0.21.1
 Fix: Bulk worker progress lines are now rendered as separate lines in the modal instead of collapsing into one block of text.
 Fix: When a bulk worker finishes and notes still remain, the scheduler now starts the next worker automatically to continue the queue up to the configured worker limit.

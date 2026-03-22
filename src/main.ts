@@ -79,6 +79,7 @@ interface BulkRunState {
   timedOutHandovers: number
   cancelRequested: boolean
   maxWorkers: number
+  targetWorkerCount: number
   softTimeoutMs: number
   launchedWorkers: number
   activeWorkers: Map<number, BulkWorkerState>
@@ -99,6 +100,7 @@ export default class LocalImagesPlugin extends Plugin {
   noteModified: Array<TFile> = []
   newfCreatedByDownloader: Array<string> = []
   bulkCancelRequested = false
+  bulkRunActive = false
   currentBulkRun: BulkRunState | null = null
 
   private cloneSettingsSnapshot(): ISettings {
@@ -163,6 +165,15 @@ export default class LocalImagesPlugin extends Plugin {
     }
 
     return files
+  }
+
+  private resetRealtimeProcessingQueues() {
+    this.modifiedQueue = new UniqueQueue<TFile>()
+    this.newfCreated = []
+    this.newfCreatedByDownloader = []
+    this.noteModified = []
+    window.clearInterval(this.newfProcInt)
+    this.newfProcInt = 0
   }
 
   private async pathExistsOnDisk(fullPath: string): Promise<boolean> {
@@ -428,6 +439,9 @@ export default class LocalImagesPlugin extends Plugin {
     // Some file has been created
 
     this.app.vault.on('create', async (file: TFile) => {
+      if (this.bulkRunActive) {
+        return
+      }
       
       logError("New file created: " + file.path)
 
@@ -536,6 +550,9 @@ export default class LocalImagesPlugin extends Plugin {
     // Some file has been modified
 
     this.app.vault.on('modify', async (file: TFile) => {
+      if (this.bulkRunActive) {
+        return
+      }
       logError("File modified: " + file.path , false)
  
       if (!file ||
@@ -578,6 +595,9 @@ export default class LocalImagesPlugin extends Plugin {
 
 
   setupQueueInterval() {
+    if (this.bulkRunActive) {
+      return
+    }
     if (this.intervalId) {
       const intervalId = this.intervalId
       this.intervalId = 0
@@ -823,6 +843,7 @@ export default class LocalImagesPlugin extends Plugin {
       timedOutHandovers: 0,
       cancelRequested: false,
       maxWorkers: 5,
+      targetWorkerCount: 1,
       softTimeoutMs: 15_000,
       launchedWorkers: 0,
       activeWorkers: new Map(),
@@ -836,6 +857,8 @@ export default class LocalImagesPlugin extends Plugin {
     })
 
     this.bulkCancelRequested = false
+    this.bulkRunActive = true
+    this.resetRealtimeProcessingQueues()
     this.currentBulkRun = run
     progressModal?.setOnCancel(() => {
       this.bulkCancelRequested = true
@@ -880,6 +903,8 @@ export default class LocalImagesPlugin extends Plugin {
     }
 
     this.bulkCancelRequested = false
+    this.bulkRunActive = false
+    this.resetRealtimeProcessingQueues()
     this.currentBulkRun = null
   }
 
@@ -905,6 +930,15 @@ export default class LocalImagesPlugin extends Plugin {
     return true
   }
 
+  private fillBulkWorkerSlots(run: BulkRunState) {
+    const desiredWorkers = Math.min(run.targetWorkerCount, run.maxWorkers)
+    while (!run.cancelRequested && run.nextIndex < run.files.length && run.activeWorkers.size < desiredWorkers) {
+      if (!this.spawnBulkWorker(run)) {
+        break
+      }
+    }
+  }
+
   private async runBulkWorker(run: BulkRunState, worker: BulkWorkerState): Promise<void> {
     while (!run.cancelRequested && !worker.retireAfterCurrent) {
       const nextFile = run.files[run.nextIndex]
@@ -928,8 +962,9 @@ export default class LocalImagesPlugin extends Plugin {
         worker.retireAfterCurrent = true
         worker.status = "retiring"
         run.timedOutHandovers++
+        run.targetWorkerCount = Math.min(run.targetWorkerCount + 1, run.maxWorkers)
         this.renderBulkProgress(run)
-        this.spawnBulkWorker(run)
+        this.fillBulkWorkerSlots(run)
       }, run.softTimeoutMs)
 
       try {
@@ -962,14 +997,11 @@ export default class LocalImagesPlugin extends Plugin {
     }
 
     run.activeWorkers.delete(worker.id)
+    this.fillBulkWorkerSlots(run)
     this.renderBulkProgress(run)
     if (run.activeWorkers.size === 0 && (run.cancelRequested || run.nextIndex >= run.files.length)) {
       run.resolveCompletion?.()
       return
-    }
-
-    if (!run.cancelRequested && run.nextIndex < run.files.length && run.activeWorkers.size < run.maxWorkers) {
-      this.spawnBulkWorker(run)
     }
   }
 
@@ -1284,6 +1316,9 @@ export default class LocalImagesPlugin extends Plugin {
 
 
   private async onMdCreateFunc(file: TFile) {
+    if (this.bulkRunActive) {
+      return
+    }
 
  
     if (!file ||
@@ -1318,6 +1353,9 @@ export default class LocalImagesPlugin extends Plugin {
   }
 
   private async onFCreateFunc(file: TFile) {
+    if (this.bulkRunActive) {
+      return
+    }
  
     if (!file ||
       !(file instanceof TFile) ||
@@ -1354,14 +1392,14 @@ export default class LocalImagesPlugin extends Plugin {
   }
 
   private processMdFilesOnTimer = async () => {
+    if (this.bulkRunActive) {
+      this.resetRealtimeProcessingQueues()
+      return
+    }
 
     const th = this
     function onRet() {
-      th.newfCreated = []
-      th.newfCreatedByDownloader = []
-      th.noteModified = []
-      window.clearInterval(th.newfProcInt)
-      th.newfProcInt = 0
+      th.resetRealtimeProcessingQueues()
     }
 
     logError("func processMdFilesOnTimer:\r\n")
@@ -1437,6 +1475,9 @@ export default class LocalImagesPlugin extends Plugin {
 
 
   setupNewMdFilesProcInterval() {
+    if (this.bulkRunActive) {
+      return
+    }
     logError("func setupNewFilesProcInterval: \r\n")
     window.clearInterval(this.newfProcInt)
     this.newfProcInt = 0
@@ -1458,6 +1499,10 @@ export default class LocalImagesPlugin extends Plugin {
 
 
   processModifiedQueue = async () => {
+    if (this.bulkRunActive) {
+      this.modifiedQueue = new UniqueQueue<TFile>()
+      return
+    }
     const iteration = this.modifiedQueue.iterationQueue();
     for (const page of iteration) {
       const settingsSnapshot = this.cloneSettingsSnapshot()
@@ -1466,6 +1511,9 @@ export default class LocalImagesPlugin extends Plugin {
   };
 
   enqueueActivePage(activeFile: TFile) {
+    if (this.bulkRunActive) {
+      return
+    }
     this.modifiedQueue.push(
       activeFile,
       1//this.settings.realTim3AttemptsToProcess
