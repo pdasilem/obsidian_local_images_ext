@@ -53,7 +53,8 @@ interface ExternalMediaTargetState {
 export function imageTagProcessor(app: LocalImagesPluginLike,
   noteFile: TFile,
   settings: ISettings,
-  defaultdir: boolean
+  defaultdir: boolean,
+  reportPhase?: (phase: string, details?: string) => void
 ) {
 
   const unique = Math.random().toString(16).slice(2,);
@@ -79,12 +80,14 @@ export function imageTagProcessor(app: LocalImagesPluginLike,
       const protocol = link.slice(0, 5);
 
       if (protocol == "data:") {
+        reportPhase?.("Reading embedded data", `Source: ${link.slice(0, 80)}...`);
         logError("ReadBase64: \r\n" + fpath, false);
         fileData = await base64ToBuff(link);
       }
       else
 
         if (protocol == "file:") {
+          reportPhase?.("Reading local file media", `Source: ${link}`);
           logError("Readlocal: \r\n" + fpath, false);
           if (SUPPORTED_OS.win.includes(opsys)) { fpath = link.replace("file:///", ""); }
           else if (SUPPORTED_OS.unix.includes(opsys)) { fpath = link.replace("file://", ""); }
@@ -99,6 +102,7 @@ export function imageTagProcessor(app: LocalImagesPluginLike,
           //Try to download several times
           let trycount = 0;
           while (trycount < settings.tryCount) {
+            reportPhase?.("Downloading external media", `URL: ${link}`);
             fileData = await downloadImage(link);
             logError("\r\n\nDownloading (try): " + trycount + "\r\n\n");
             if (fileData !== null) { break; }

@@ -91,6 +91,8 @@ export class BulkProgressModal extends Modal {
 	private statusEl: HTMLDivElement | null = null;
 	private detailsEl: HTMLDivElement | null = null;
 	private closeButtonEl: HTMLButtonElement | null = null;
+	private cancelButtonEl: HTMLButtonElement | null = null;
+	private onCancelCallback: (() => void) | null = null;
 
 	constructor(app: App) {
 		super(app);
@@ -106,10 +108,17 @@ export class BulkProgressModal extends Modal {
 		this.statusLines = lines;
 		this.detailsLine = details;
 		this.render();
+		if (this.cancelButtonEl) {
+			this.cancelButtonEl.disabled = true;
+		}
 		if (this.closeButtonEl) {
 			this.closeButtonEl.disabled = false;
 			this.closeButtonEl.focus();
 		}
+	}
+
+	setOnCancel(callback: (() => void) | null) {
+		this.onCancelCallback = callback;
 	}
 
 	onOpen() {
@@ -118,6 +127,19 @@ export class BulkProgressModal extends Modal {
 
 		this.statusEl = contentEl.createDiv();
 		this.detailsEl = contentEl.createDiv();
+		this.cancelButtonEl = contentEl.createEl("button", {
+			cls: ["mod-cta"],
+			text: "Cancel"
+		});
+		this.cancelButtonEl.addEventListener("click", async () => {
+			if (this.cancelButtonEl) {
+				this.cancelButtonEl.disabled = true;
+				this.cancelButtonEl.setText("Stopping...");
+			}
+			if (this.onCancelCallback) {
+				this.onCancelCallback();
+			}
+		});
 		this.closeButtonEl = contentEl.createEl("button", {
 			cls: ["mod-cta"],
 			text: "Close"
@@ -153,5 +175,7 @@ export class BulkProgressModal extends Modal {
 		this.statusEl = null;
 		this.detailsEl = null;
 		this.closeButtonEl = null;
+		this.cancelButtonEl = null;
+		this.onCancelCallback = null;
 	}
 }

@@ -56,6 +56,38 @@ interface LocalAttachmentTargetState {
   useFilesystemMove: boolean
 }
 
+type BulkWorkerStatus = "active" | "retiring" | "finished" | "failed"
+
+interface BulkWorkerState {
+  id: number
+  currentFilePath: string
+  phase: string
+  details: string
+  startedAt: number
+  timedOut: boolean
+  retireAfterCurrent: boolean
+  status: BulkWorkerStatus
+}
+
+interface BulkRunState {
+  settingsSnapshot: ISettings
+  files: TFile[]
+  nextIndex: number
+  completedCount: number
+  successCount: number
+  errorCount: number
+  timedOutHandovers: number
+  cancelRequested: boolean
+  maxWorkers: number
+  softTimeoutMs: number
+  launchedWorkers: number
+  activeWorkers: Map<number, BulkWorkerState>
+  errorFiles: string[]
+  progressModal: BulkProgressModal | null
+  completionPromise: Promise<void>
+  resolveCompletion: (() => void) | null
+}
+
 //import { count, log } from "console"
 
 export default class LocalImagesPlugin extends Plugin {
@@ -66,9 +98,52 @@ export default class LocalImagesPlugin extends Plugin {
   newfCreated: Array<string> = []
   noteModified: Array<TFile> = []
   newfCreatedByDownloader: Array<string> = []
+  bulkCancelRequested = false
+  currentBulkRun: BulkRunState | null = null
 
   private cloneSettingsSnapshot(): ISettings {
     return { ...this.settings }
+  }
+
+  private reportBulkWorkerPhase(run: BulkRunState, workerId: number, phase: string, details = "") {
+    const worker = run.activeWorkers.get(workerId)
+    if (!worker) {
+      return
+    }
+
+    worker.phase = phase
+    worker.details = details
+    this.renderBulkProgress(run)
+  }
+
+  private renderBulkProgress(run: BulkRunState) {
+    if (!run.progressModal) {
+      return
+    }
+
+    const remaining = Math.max(run.files.length - run.completedCount, 0)
+    const workerLines = [...run.activeWorkers.values()]
+      .sort((a, b) => a.id - b.id)
+      .flatMap((worker) => [
+        `Worker ${worker.id}: ${worker.currentFilePath || "(idle)"}`,
+        `Phase: ${worker.phase || "Working"}`,
+        ...(worker.details ? [`Details: ${worker.details}`] : []),
+        ...(worker.retireAfterCurrent ? ["State: retiring after current note"] : []),
+      ])
+
+    run.progressModal.setProgress(
+      [
+        "Bulk processing in progress",
+        `Total: ${run.files.length}`,
+        `Completed: ${run.completedCount}`,
+        `Remaining: ${remaining}`,
+        `Succeeded: ${run.successCount}`,
+        `Errors: ${run.errorCount}`,
+        `Timed out handovers: ${run.timedOutHandovers}`,
+        `Active workers: ${run.activeWorkers.size}`,
+      ],
+      workerLines.join("\n")
+    )
   }
 
   private getFilesInFolderTree(folder: TFolder | null): TFile[] {
@@ -537,7 +612,8 @@ export default class LocalImagesPlugin extends Plugin {
   private async processPage(
     file: TFile,
     defaultdir: boolean = false,
-    settingsSnapshot: ISettings = this.cloneSettingsSnapshot()
+    settingsSnapshot: ISettings = this.cloneSettingsSnapshot(),
+    reportPhase?: (phase: string, details?: string) => void
   ): Promise<any> {
     
  
@@ -553,7 +629,8 @@ export default class LocalImagesPlugin extends Plugin {
       imageTagProcessor(this,
         file,
         settingsSnapshot,
-        defaultdir
+        defaultdir,
+        reportPhase
       )
     )
 
@@ -734,56 +811,161 @@ export default class LocalImagesPlugin extends Plugin {
   processAllPages = async () => {
     const settingsSnapshot = this.cloneSettingsSnapshot()
     const files = this.app.vault.getMarkdownFiles().filter(file => this.ExemplaryOfMD(file.path))
-    const pagesCount = files.length
-    let processedCount = 0
-    let successCount = 0
-    let errorCount = 0
-    const errorFiles: string[] = []
-
     const progressModal = settingsSnapshot.showNotifications ? new BulkProgressModal(this.app) : null
+
+    const run: BulkRunState = {
+      settingsSnapshot,
+      files,
+      nextIndex: 0,
+      completedCount: 0,
+      successCount: 0,
+      errorCount: 0,
+      timedOutHandovers: 0,
+      cancelRequested: false,
+      maxWorkers: 5,
+      softTimeoutMs: 15_000,
+      launchedWorkers: 0,
+      activeWorkers: new Map(),
+      errorFiles: [],
+      progressModal,
+      completionPromise: Promise.resolve(),
+      resolveCompletion: null,
+    }
+    run.completionPromise = new Promise<void>((resolve) => {
+      run.resolveCompletion = resolve
+    })
+
+    this.bulkCancelRequested = false
+    this.currentBulkRun = run
+    progressModal?.setOnCancel(() => {
+      this.bulkCancelRequested = true
+      run.cancelRequested = true
+    })
     progressModal?.open()
 
-    for (const [index, file] of files.entries()) {
-      const remainingBefore = pagesCount - processedCount
-      progressModal?.setProgress(
-        [
-          "Bulk processing in progress",
-          `Total: ${pagesCount}`,
-          `Processed: ${processedCount}`,
-          `Remaining: ${remainingBefore}`,
-          `Errors: ${errorCount}`,
-        ],
-        `Current note: ${file.path}`
-      )
+    if (!this.spawnBulkWorker(run)) {
+      run.resolveCompletion?.()
+    }
+    await run.completionPromise
 
-      try {
-        await this.processPage(file, false, settingsSnapshot)
-        await this.processLocalAttachmentsForNote(file, false, false, false, settingsSnapshot)
-        successCount++
-      } catch (error) {
-        errorCount++
-        errorFiles.push(file.path)
-        logError(error)
+    const cancelled = run.cancelRequested
+    const details = run.errorFiles.length > 0
+      ? `Failed notes: ${run.errorFiles.slice(0, 5).join(", ")}${run.errorFiles.length > 5 ? " ..." : ""}`
+      : cancelled
+        ? "Stopped by user."
+        : "Completed without errors."
+
+    const resultLines = [
+      cancelled ? "Bulk processing cancelled" : "Bulk processing finished",
+      `Total: ${run.files.length}`,
+      `Completed: ${run.completedCount}`,
+      `Succeeded: ${run.successCount}`,
+      `Errors: ${run.errorCount}`,
+      `Timed out handovers: ${run.timedOutHandovers}`,
+      `Remaining: ${Math.max(run.files.length - run.completedCount, 0)}`,
+    ]
+
+    if (progressModal) {
+      progressModal.setFinished(resultLines, details)
+      if (cancelled) {
+        progressModal.close()
       }
-
-      processedCount = index + 1
     }
 
-    const details = errorFiles.length > 0
-      ? `Failed notes: ${errorFiles.slice(0, 5).join(", ")}${errorFiles.length > 5 ? " ..." : ""}`
-      : "Completed without errors."
+    if (cancelled) {
+      showBalloon(
+        `Bulk processing cancelled.\nCompleted: ${run.completedCount}\nSucceeded: ${run.successCount}\nErrors: ${run.errorCount}`,
+        settingsSnapshot.showNotifications
+      )
+    }
 
-    progressModal?.setFinished(
-      [
-        "Bulk processing finished",
-        `Total: ${pagesCount}`,
-        `Processed: ${processedCount}`,
-        `Succeeded: ${successCount}`,
-        `Errors: ${errorCount}`,
-        "Remaining: 0",
-      ],
-      details
-    )
+    this.bulkCancelRequested = false
+    this.currentBulkRun = null
+  }
+
+  private spawnBulkWorker(run: BulkRunState): boolean {
+    if (run.cancelRequested || run.nextIndex >= run.files.length || run.activeWorkers.size >= run.maxWorkers) {
+      return false
+    }
+
+    const worker: BulkWorkerState = {
+      id: ++run.launchedWorkers,
+      currentFilePath: "",
+      phase: "Preparing",
+      details: "",
+      startedAt: 0,
+      timedOut: false,
+      retireAfterCurrent: false,
+      status: "active",
+    }
+
+    run.activeWorkers.set(worker.id, worker)
+    this.renderBulkProgress(run)
+    void this.runBulkWorker(run, worker)
+    return true
+  }
+
+  private async runBulkWorker(run: BulkRunState, worker: BulkWorkerState): Promise<void> {
+    while (!run.cancelRequested && !worker.retireAfterCurrent) {
+      const nextFile = run.files[run.nextIndex]
+      if (!nextFile) {
+        break
+      }
+      run.nextIndex++
+
+      worker.currentFilePath = nextFile.path
+      worker.phase = "Scanning note"
+      worker.details = ""
+      worker.startedAt = Date.now()
+      this.renderBulkProgress(run)
+
+      const timeoutId = window.setTimeout(() => {
+        if (worker.status !== "active" || worker.retireAfterCurrent || run.cancelRequested) {
+          return
+        }
+
+        worker.timedOut = true
+        worker.retireAfterCurrent = true
+        worker.status = "retiring"
+        run.timedOutHandovers++
+        this.renderBulkProgress(run)
+        this.spawnBulkWorker(run)
+      }, run.softTimeoutMs)
+
+      try {
+        this.reportBulkWorkerPhase(run, worker.id, "Processing external media", "")
+        await this.processPage(
+          nextFile,
+          false,
+          run.settingsSnapshot,
+          (phase, details) => this.reportBulkWorkerPhase(run, worker.id, phase, details)
+        )
+        this.reportBulkWorkerPhase(run, worker.id, "Processing local attachments", "")
+        await this.processLocalAttachmentsForNote(nextFile, false, false, false, run.settingsSnapshot)
+        run.successCount++
+      } catch (error) {
+        run.errorCount++
+        run.errorFiles.push(nextFile.path)
+        worker.status = "failed"
+        worker.phase = "Failed"
+        worker.details = String(error)
+        logError(error)
+      } finally {
+        window.clearTimeout(timeoutId)
+        run.completedCount++
+        if (!worker.retireAfterCurrent && worker.status !== "failed") {
+          worker.phase = "Completed"
+          worker.details = ""
+        }
+        this.renderBulkProgress(run)
+      }
+    }
+
+    run.activeWorkers.delete(worker.id)
+    this.renderBulkProgress(run)
+    if (run.activeWorkers.size === 0 && (run.cancelRequested || run.nextIndex >= run.files.length)) {
+      run.resolveCompletion?.()
+    }
   }
 
 
