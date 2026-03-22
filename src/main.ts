@@ -470,12 +470,6 @@ export default class LocalImagesPlugin extends Plugin {
         continue
       }
 
-      const oversizeLimitBytes = this.settings.maxMediaFileSizeKb > 0
-        ? this.settings.maxMediaFileSizeKb * 1024
-        : 0
-      const sizeProbeBytes = oversizeLimitBytes > 0 ? oversizeLimitBytes + 1 : undefined
-      const oldSizeProbe = await readFromDiskB(pathJoin([this.app.vault.adapter.basePath, oldpath]), sizeProbeBytes)
-      const sizeForTargetDir = oldSizeProbe?.byteLength ?? 0
       const oldBinData = await this.app.vault.adapter.readBinary(oldpath)
       const oldMD5 = md5Sig(oldBinData)
       const fileExt = await getFileExt(oldBinData, oldpath)
@@ -483,7 +477,7 @@ export default class LocalImagesPlugin extends Plugin {
       const shouldPreserveCurrentCounterName =
         attachmentNamingStrategy === "noteNameCounter" &&
         matchesNoteNameCounterPattern(note, oldpath)
-      let targetDir = await getTargetMediaDir(this.app, note, this.settings, sizeForTargetDir, defaultdir)
+      let targetDir = await getTargetMediaDir(this.app, note, this.settings, oldBinData.byteLength, defaultdir)
       await this.ensureFolderExists(targetDir)
 
       let newpath = pathJoin([targetDir, cFileName(path.basename(el.link))])

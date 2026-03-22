@@ -1,3 +1,7 @@
+0.17.9
+Fix: Oversized media routing now compares file sizes in bytes, making large local attachments move to the oversized subfolder reliably.
+Change: Renamed the auto-processing setting for existing notes to clarify that it applies to new attachments and media links added to existing markdown notes.
+
 0.17.8
 Fix: Existing notes now process newly added media links and attachments from markdown modifications instead of relying on the 1000 ms file-creation window.
 Fix: Local oversized attachment detection now uses a size probe based on the configured upper size limit, so manual processing places large files into the oversized subfolder correctly.

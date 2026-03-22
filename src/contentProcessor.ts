@@ -326,12 +326,12 @@ export async function getTargetMediaDir(app: App,
   unique: string = ""): Promise<string> {
 
   const mediaDir = await getMDir(app, noteFile, settings, defaultdir, unique);
-  const fileSizeKb = Math.round(byteLength / 1024);
+  const maxMediaFileSizeBytes = settings.maxMediaFileSizeKb * 1024;
   const oversizeSubdir = trimAny(settings.oversizeMediaSubdir, ["/", "\\", " "]);
 
   if (
     settings.maxMediaFileSizeKb <= 0 ||
-    fileSizeKb <= settings.maxMediaFileSizeKb ||
+    byteLength <= maxMediaFileSizeBytes ||
     oversizeSubdir.length === 0
   ) {
     return mediaDir;

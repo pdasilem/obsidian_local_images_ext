@@ -1,7 +1,7 @@
 {
   "id": "obsidian_local_images_ext",
   "name": "Local Images Ext",
-  "version": "0.17.8",
+  "version": "0.17.9",
   "minAppVersion": "1.1.15",
   "description": "Local Images Ext plugin searches for all external media links in your notes, downloads and saves them locally and adjusts the links in your notes to point to the saved files.",
   "author": "catalysm, aleksey-rezvov, Sergei Korneev",

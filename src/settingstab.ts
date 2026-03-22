@@ -184,8 +184,8 @@ export default class SettingTab extends PluginSettingTab {
 
 
         new Setting(containerEl)
-            .setName("Process all new attachments")
-            .setDesc("The plugin will also move all attachments from obsidian default folder to plugin folder.")
+            .setName("Process all new attachments to existing notes")
+            .setDesc("Process new attachments and media links added to existing MD notes.")
             .addToggle((toggle) =>
                 toggle
                     .setValue(this.plugin.settings.processAll)
@@ -280,11 +280,11 @@ export default class SettingTab extends PluginSettingTab {
                         await this.plugin.saveSettings();
                         logError("Excluded folders regex:" + regexconverted);
                     }
-            
+
                     });
 
-                text.inputEl.rows = 4;        
-                text.inputEl.style.width = "100%";  
+                text.inputEl.rows = 4;
+                text.inputEl.style.width = "100%";
             });
 
         new Setting(containerEl)
