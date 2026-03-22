@@ -1,3 +1,7 @@
+0.20.1
+Fix: Bulk processing now continues past per-note failures instead of stopping on the first problematic note.
+Add: Bulk processing progress is shown in a dedicated modal with totals, current note, success count and error count.
+
 0.20.0
 Refactor: Extracted attachment naming core into a dedicated module shared by local attachment flow and external media flow.
 Fix: Any single processing flow now starts from a settings snapshot instead of reading live settings throughout the run.

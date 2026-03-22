@@ -1,5 +1,4 @@
 import {
-  Notice,
   Plugin,
   TFile,
   Editor,
@@ -46,7 +45,7 @@ import {
 
 import { UniqueQueue } from "./uniqueQueue"
 import path from "path"
-import { ModalW1 } from "./modal"
+import { BulkProgressModal, ModalW1 } from "./modal"
 const fs = require('fs').promises;
 
 interface LocalAttachmentTargetState {
@@ -737,35 +736,54 @@ export default class LocalImagesPlugin extends Plugin {
     const files = this.app.vault.getMarkdownFiles().filter(file => this.ExemplaryOfMD(file.path))
     const pagesCount = files.length
     let processedCount = 0
+    let successCount = 0
+    let errorCount = 0
+    const errorFiles: string[] = []
 
-    const notice = settingsSnapshot.showNotifications
-
-      ? new Notice(
-        APP_TITLE + `\nStart processing. Total ${pagesCount} pages. `,
-        TIMEOUT_LIKE_INFINITY
-      )
-      : null
+    const progressModal = settingsSnapshot.showNotifications ? new BulkProgressModal(this.app) : null
+    progressModal?.open()
 
     for (const [index, file] of files.entries()) {
-      if (notice) {
-        const remainingBefore = pagesCount - processedCount
-        //setMessage() is undeclared but factically existing, so ignore the TS error  //@ts-expect-error
-        notice.setMessage(
-          APP_TITLE + `\nProcessing "${file.path}"\nTotal: ${pagesCount}\nProcessed: ${processedCount}\nRemaining: ${remainingBefore}`
-        )
+      const remainingBefore = pagesCount - processedCount
+      progressModal?.setProgress(
+        [
+          "Bulk processing in progress",
+          `Total: ${pagesCount}`,
+          `Processed: ${processedCount}`,
+          `Remaining: ${remainingBefore}`,
+          `Errors: ${errorCount}`,
+        ],
+        `Current note: ${file.path}`
+      )
+
+      try {
+        await this.processPage(file, false, settingsSnapshot)
+        await this.processLocalAttachmentsForNote(file, false, false, false, settingsSnapshot)
+        successCount++
+      } catch (error) {
+        errorCount++
+        errorFiles.push(file.path)
+        logError(error)
       }
-      await this.processPage(file, false, settingsSnapshot)
-      await this.processLocalAttachmentsForNote(file, false, false, false, settingsSnapshot)
+
       processedCount = index + 1
     }
-    if (notice) {
-      // dum @ts-expect-error
-      notice.setMessage(APP_TITLE + `\nTotal: ${pagesCount}\nProcessed: ${processedCount}\nRemaining: 0`)
 
-      setTimeout(() => {
-        notice.hide()
-      }, NOTICE_TIMEOUT)
-    }
+    const details = errorFiles.length > 0
+      ? `Failed notes: ${errorFiles.slice(0, 5).join(", ")}${errorFiles.length > 5 ? " ..." : ""}`
+      : "Completed without errors."
+
+    progressModal?.setFinished(
+      [
+        "Bulk processing finished",
+        `Total: ${pagesCount}`,
+        `Processed: ${processedCount}`,
+        `Succeeded: ${successCount}`,
+        `Errors: ${errorCount}`,
+        "Remaining: 0",
+      ],
+      details
+    )
   }
 
 
