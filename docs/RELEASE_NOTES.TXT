@@ -1,3 +1,7 @@
+0.18.1
+Fix: Automatic processing for existing notes now runs a follow-up reconcile pass so newly inserted attachments are also moved into their final target folder, including oversized destinations.
+Docs: Added README notes about oversized attachment routing, note-name attachment renaming, and BRAT installation.
+
 0.18.0
 Add: Optional symlink/junction mode for the oversized media subfolder. When enabled, oversized files are moved into that folder via direct filesystem operations instead of the Obsidian vault adapter.
 Fix: Oversized subfolder defaults and UI now use `big` without a leading slash.

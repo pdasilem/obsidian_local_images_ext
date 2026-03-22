@@ -1,6 +1,6 @@
 # Obsidian Local Images Ext
 
-Obsidian Local Images Ext is a plugin for [Obsidian](https://obsidian.md/) 
+Obsidian Local Images Extended is a plugin for [Obsidian](https://obsidian.md/) 
 
 ***
 
@@ -9,7 +9,6 @@ Obsidian Local Images Ext is a plugin for [Obsidian](https://obsidian.md/)
 **The author of this software is not obligated to provide any form of support and assumes no liability.**
 
 ***
-
  
 
 ## Main features of the plugin include:
@@ -18,9 +17,11 @@ Obsidian Local Images Ext is a plugin for [Obsidian](https://obsidian.md/)
 - Localizing media files from copied/pasted content of word / Open Office documents
 - Downloading any filetypes from web
 - Saving attachments next to note in folder named after  note
+- Moving oversized attachments into a separate subfolder, including symlink/junction targets, when they exceed the configured size limit
 - Downloading files embedded in markdown tags from web to vault 
 - Saving base64 embedded images to vault
 - Converting PNG images to JPEG images with various quality
+- Renaming attachments by note name with an incremental counter
 - Attachments de-dulication by using MD5 hashing algorithm
 - Removing orphaned attachments from vault
 
@@ -33,6 +34,7 @@ Obsidian Local Images Ext is a plugin for [Obsidian](https://obsidian.md/)
 - Extract the archive into your Obsidian vault (e.g. Myvault/.obsidian/plugins)
 - Restart Obsidian.
 - Or install from "Obsidian Community Plugins"
+- Or install any released version through the BRAT plugin from this GitHub repository
 - Open "Community plugins" dialog and change plugin settings at will.
 - Enjoy
 

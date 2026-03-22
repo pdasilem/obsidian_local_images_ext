@@ -1132,6 +1132,7 @@ export default class LocalImagesPlugin extends Plugin {
           await this.processPage(note, false)
         }
         await this.processLocalAttachmentsForNote(note, false, true, true)
+        await this.processLocalAttachmentsForNote(note, false, false, false)
       }
     } catch (e) {
       logError(e)
