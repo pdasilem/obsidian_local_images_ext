@@ -535,33 +535,36 @@ export default class LocalImagesPlugin extends Plugin {
         newlink = await getRDir(note, this.settings, newpath, undefined, useMdLinks)
       }
 
-      if (await this.app.vault.adapter.exists(newpath)) {
-        let newFMD5
-        if (newBinData != null) {
-          newFMD5 = md5Sig(await this.app.vault.adapter.readBinary(newpath))
-        } else {
-          newFMD5 = md5Sig(await this.app.vault.adapter.readBinary(newpath))
-        }
+      const desiredPath = newpath
+      const sourceMD5 = newMD5 ?? oldMD5
 
-        if (newMD5 === newFMD5 || (oldMD5 === newFMD5 && oldpath != newpath)) {
+      if (oldpath != desiredPath && await this.app.vault.adapter.exists(desiredPath)) {
+        const existingTargetMD5 = md5Sig(await this.app.vault.adapter.readBinary(desiredPath))
+
+        if (sourceMD5 === existingTargetMD5) {
           await this.app.vault.adapter.remove(oldpath)
-        } else if (oldpath != newpath) {
+        } else {
           let inc = 1
           while (await this.app.vault.adapter.exists(newpath)) {
-            newpath = pathJoin([targetDir, `(${inc}) ` + cFileName(path.basename(el.link))])
+            newpath = pathJoin([targetDir, `(${inc}) ` + cFileName(path.basename(desiredPath))])
             inc++
           }
 
           newlink = await getRDir(note, this.settings, newpath, undefined, useMdLinks)
-          await this.app.vault.adapter.rename(oldpath, newpath)
-        }
-      } else {
-        try {
           if (newBinData != null) {
             await this.app.vault.adapter.writeBinary(newpath, newBinData)
             await this.app.vault.adapter.remove(oldpath)
           } else {
             await this.app.vault.adapter.rename(oldpath, newpath)
+          }
+        }
+      } else if (oldpath != desiredPath) {
+        try {
+          if (newBinData != null) {
+            await this.app.vault.adapter.writeBinary(desiredPath, newBinData)
+            await this.app.vault.adapter.remove(oldpath)
+          } else {
+            await this.app.vault.adapter.rename(oldpath, desiredPath)
           }
         } catch (error) {
           logError(error)

@@ -1,3 +1,6 @@
+0.17.10
+Fix: Local attachment processing now applies the computed target path directly, so files are moved to the correct folder, including the oversized media subfolder, instead of only being renamed.
+
 0.17.9
 Fix: Oversized media routing now compares file sizes in bytes, making large local attachments move to the oversized subfolder reliably.
 Change: Renamed the auto-processing setting for existing notes to clarify that it applies to new attachments and media links added to existing markdown notes.
