@@ -1,3 +1,8 @@
+0.18.0
+Add: Optional symlink/junction mode for the oversized media subfolder. When enabled, oversized files are moved into that folder via direct filesystem operations instead of the Obsidian vault adapter.
+Fix: Oversized subfolder defaults and UI now use `big` without a leading slash.
+Refactor: Removed legacy and dead code around attachment naming and file-move state.
+
 0.17.10
 Fix: Local attachment processing now applies the computed target path directly, so files are moved to the correct folder, including the oversized media subfolder, instead of only being renamed.
 

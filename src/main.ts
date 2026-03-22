@@ -32,8 +32,7 @@ import {
   encObsURI,
   pathJoin,
   blobToJpegArrayBuffer,
-  getFileExt,
-  readFromDiskB
+  getFileExt
 } from "./utils"
 
 import {
@@ -66,7 +65,6 @@ export default class LocalImagesPlugin extends Plugin {
   newfProcInt: number
   newfCreated: Array<string> = []
   noteModified: Array<TFile> = []
-  newfMoveReq: boolean = true
   newfCreatedByDownloader: Array<string> = []
 
   private getFilesInFolderTree(folder: TFolder | null): TFile[] {
@@ -86,6 +84,58 @@ export default class LocalImagesPlugin extends Plugin {
     }
 
     return files
+  }
+
+  private async pathExistsOnDisk(fullPath: string): Promise<boolean> {
+    try {
+      await fs.access(fullPath)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  private async moveToFilesystemTarget(
+    oldVaultPath: string,
+    desiredVaultPath: string,
+    newBinData: ArrayBuffer | null
+  ): Promise<void> {
+    const vaultBasePath = this.app.vault.adapter.basePath
+    const oldFsPath = pathJoin([vaultBasePath, oldVaultPath])
+    const desiredFsPath = pathJoin([vaultBasePath, desiredVaultPath])
+    const desiredFsDir = path.dirname(desiredFsPath)
+    const realTargetDir = await fs.realpath(desiredFsDir)
+    const realTargetPath = pathJoin([realTargetDir, path.basename(desiredVaultPath)])
+
+    if (newBinData != null) {
+      await fs.writeFile(realTargetPath, Buffer.from(new Uint8Array(newBinData)))
+      await fs.unlink(oldFsPath)
+      return
+    }
+
+    try {
+      await fs.rename(oldFsPath, realTargetPath)
+    } catch {
+      await fs.copyFile(oldFsPath, realTargetPath)
+      await fs.unlink(oldFsPath)
+    }
+  }
+
+  private isOversizedFilesystemMoveEnabled(targetDir: string, desiredPath: string): boolean {
+    if (!this.settings.oversizeMediaSubdirIsSymlink) {
+      return false
+    }
+
+    const oversizeSubdir = trimAny(this.settings.oversizeMediaSubdir, ["/", "\\", " "])
+    if (!oversizeSubdir.length) {
+      return false
+    }
+
+    const normalizedTargetDir = trimAny(targetDir.replace(/\\/g, "/"), ["/"])
+    const normalizedDesiredPath = desiredPath.replace(/\\/g, "/")
+    const normalizedOversizeSuffix = trimAny(oversizeSubdir.replace(/\\/g, "/"), ["/"])
+
+    return normalizedTargetDir.endsWith(normalizedOversizeSuffix) && normalizedDesiredPath.includes(`/${normalizedOversizeSuffix}/`)
   }
 
 
@@ -538,33 +588,52 @@ export default class LocalImagesPlugin extends Plugin {
       const desiredPath = newpath
       const sourceMD5 = newMD5 ?? oldMD5
 
-      if (oldpath != desiredPath && await this.app.vault.adapter.exists(desiredPath)) {
-        const existingTargetMD5 = md5Sig(await this.app.vault.adapter.readBinary(desiredPath))
+      const useFilesystemMove = this.isOversizedFilesystemMoveEnabled(targetDir, desiredPath)
+      const targetAlreadyExists = useFilesystemMove
+        ? await this.pathExistsOnDisk(pathJoin([this.app.vault.adapter.basePath, desiredPath]))
+        : await this.app.vault.adapter.exists(desiredPath)
+
+      if (oldpath != desiredPath && targetAlreadyExists) {
+        const existingTargetMD5 = useFilesystemMove
+          ? md5Sig(await fs.readFile(pathJoin([this.app.vault.adapter.basePath, desiredPath])))
+          : md5Sig(await this.app.vault.adapter.readBinary(desiredPath))
 
         if (sourceMD5 === existingTargetMD5) {
           await this.app.vault.adapter.remove(oldpath)
         } else {
           let inc = 1
-          while (await this.app.vault.adapter.exists(newpath)) {
+          while (
+            useFilesystemMove
+              ? await this.pathExistsOnDisk(pathJoin([this.app.vault.adapter.basePath, newpath]))
+              : await this.app.vault.adapter.exists(newpath)
+          ) {
             newpath = pathJoin([targetDir, `(${inc}) ` + cFileName(path.basename(desiredPath))])
             inc++
           }
 
           newlink = await getRDir(note, this.settings, newpath, undefined, useMdLinks)
-          if (newBinData != null) {
-            await this.app.vault.adapter.writeBinary(newpath, newBinData)
-            await this.app.vault.adapter.remove(oldpath)
+          if (useFilesystemMove) {
+            await this.moveToFilesystemTarget(oldpath, newpath, newBinData)
           } else {
-            await this.app.vault.adapter.rename(oldpath, newpath)
+            if (newBinData != null) {
+              await this.app.vault.adapter.writeBinary(newpath, newBinData)
+              await this.app.vault.adapter.remove(oldpath)
+            } else {
+              await this.app.vault.adapter.rename(oldpath, newpath)
+            }
           }
         }
       } else if (oldpath != desiredPath) {
         try {
-          if (newBinData != null) {
-            await this.app.vault.adapter.writeBinary(desiredPath, newBinData)
-            await this.app.vault.adapter.remove(oldpath)
+          if (useFilesystemMove) {
+            await this.moveToFilesystemTarget(oldpath, desiredPath, newBinData)
           } else {
-            await this.app.vault.adapter.rename(oldpath, desiredPath)
+            if (newBinData != null) {
+              await this.app.vault.adapter.writeBinary(desiredPath, newBinData)
+              await this.app.vault.adapter.remove(oldpath)
+            } else {
+              await this.app.vault.adapter.rename(oldpath, desiredPath)
+            }
           }
         } catch (error) {
           logError(error)
@@ -750,10 +819,9 @@ export default class LocalImagesPlugin extends Plugin {
           const frembeds = await FrontMatterParser(this, noteFile, FRONTMATTER_SEARCH_PATTERN);
  
  
-          if (frembeds.files?.length > 0) {
+              if (frembeds.files?.length > 0) {
             for (const frembed of frembeds.files) {
               allAttachmentsLinks.push(frembed.link);
-              console.log(frembed.link);
             }
           }
           if (embeds) {
@@ -1036,7 +1104,6 @@ export default class LocalImagesPlugin extends Plugin {
       th.newfCreated = []
       th.newfCreatedByDownloader = []
       th.noteModified = []
-      th.newfMoveReq = false
       window.clearInterval(th.newfProcInt)
       th.newfProcInt = 0
     }
@@ -1049,7 +1116,6 @@ export default class LocalImagesPlugin extends Plugin {
 
       window.clearInterval(this.newfProcInt)
       this.newfProcInt = 0
-      this.newfMoveReq = false
       for (let note of this.noteModified) {
         let filedata = await this.app.vault.cachedRead(note)
         
@@ -1164,13 +1230,12 @@ export default class LocalImagesPlugin extends Plugin {
 
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData())
-    if (!this.settings.oversizeMediaSubdir || this.settings.oversizeMediaSubdir === "_oversized") {
-      this.settings.oversizeMediaSubdir = "/big"
+    if (!this.settings.oversizeMediaSubdir) {
+      this.settings.oversizeMediaSubdir = "big"
     }
     if (!this.settings.newAttachmentNaming) {
-      this.settings.newAttachmentNaming = this.settings.useMD5ForNewAtt ? "md5" : "originalName"
+      this.settings.newAttachmentNaming = "md5"
     }
-    this.settings.useMD5ForNewAtt = this.settings.newAttachmentNaming === "md5"
     this.setupQueueInterval()
   }
 

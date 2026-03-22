@@ -1,4 +1,4 @@
-export const APP_TITLE = "Local Images Ext  0.17.10";
+export const APP_TITLE = "Local Images Ext  0.18.0";
 
 
 
@@ -80,8 +80,8 @@ export interface ISettings {
   includepattern: string;
   mediaRootDir: string;
   oversizeMediaSubdir: string;
+  oversizeMediaSubdirIsSymlink: boolean;
   disAddCom: boolean;
-  useMD5ForNewAtt: boolean;
   newAttachmentNaming: AttachmentNamingStrategy;
   removeMediaFolder: boolean;
   removeOrphansCompl: boolean;
@@ -113,9 +113,9 @@ export const DEFAULT_SETTINGS: ISettings = {
   includeps: "md|canvas",
   includepattern: "(?<md>.*\\.md)|(?<canvas>.*\\.canvas)",
   mediaRootDir: "_resources/${notename}",
-  oversizeMediaSubdir: "/big",
+  oversizeMediaSubdir: "big",
+  oversizeMediaSubdirIsSymlink: false,
   disAddCom: false,
-  useMD5ForNewAtt: true,
   newAttachmentNaming: "md5",
   removeMediaFolder: true,
   removeOrphansCompl: false,

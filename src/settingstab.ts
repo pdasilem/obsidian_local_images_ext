@@ -206,7 +206,6 @@ export default class SettingTab extends PluginSettingTab {
                     .setValue(this.plugin.settings.newAttachmentNaming)
                     .onChange(async (value) => {
                         this.plugin.settings.newAttachmentNaming = value as "md5" | "originalName" | "noteNameCounter"
-                        this.plugin.settings.useMD5ForNewAtt = value === "md5"
                         await this.plugin.saveSettings()
                     })
             )
@@ -572,11 +571,11 @@ export default class SettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName("Oversized media subfolder")
-            .setDesc("Subfolder inside the media folder for files exceeding the upper size limit. Example: /big or big/images")
+            .setDesc("Subfolder inside the media folder for files exceeding the upper size limit. Example: big or big/images")
             .setClass("oversize_folder_set")
             .addText((text) =>
                 text
-                    .setPlaceholder("/big")
+                    .setPlaceholder("big")
                     .setValue(this.plugin.settings.oversizeMediaSubdir)
                     .onChange(async (value) => {
 
@@ -587,6 +586,19 @@ export default class SettingTab extends PluginSettingTab {
                             return
                         }
                         this.plugin.settings.oversizeMediaSubdir = value
+                        await this.plugin.saveSettings()
+                    })
+            )
+
+        new Setting(containerEl)
+            .setName("Oversized folder is symlink/junction")
+            .setDesc("Use direct filesystem operations when moving oversized files into this folder.")
+            .setClass("oversize_folder_set")
+            .addToggle((toggle) =>
+                toggle
+                    .setValue(this.plugin.settings.oversizeMediaSubdirIsSymlink)
+                    .onChange(async (value) => {
+                        this.plugin.settings.oversizeMediaSubdirIsSymlink = value
                         await this.plugin.saveSettings()
                     })
             )

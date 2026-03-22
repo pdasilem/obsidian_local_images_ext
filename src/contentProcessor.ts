@@ -350,11 +350,7 @@ export async function getTargetMediaDir(app: App,
 
 
 export function getAttachmentNamingStrategy(settings: ISettings): AttachmentNamingStrategy {
-  if (settings.newAttachmentNaming) {
-    return settings.newAttachmentNaming;
-  }
-
-  return settings.useMD5ForNewAtt ? "md5" : "originalName";
+  return settings.newAttachmentNaming ?? "md5";
 }
 
 export function getNoteAttachmentBaseName(noteFile: TFile): string {

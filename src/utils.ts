@@ -226,26 +226,6 @@ export async function base64ToBuff(data: string): Promise<ArrayBuffer> {
   }
 }
 
-export async function readFromDiskB(file: string, count: number = undefined): Promise<Buffer> {
-
-  try {
-    const buffer = Buffer.alloc(count);
-    const fd: number = fs.openSync(file, "r+")
-    fs.readSync(fd, buffer, 0, buffer.length, 0)
-    logError(buffer)
-    fs.closeSync(fd)
-    return buffer
-
-  } catch (e) {
-    logError("Cannot read the file: " + e, false);
-    return null
-  }
-
-
-
-}
-
-
 export async function readFromDisk(file: string): Promise<ArrayBuffer> {
   logError("readFromDisk: " + file, false);
 
